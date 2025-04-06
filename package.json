@@ -1,0 +1,27 @@
+{
+  "name": "proyecto-mpm",
+  "version": "1.0.0",
+  "description": "Este proyecto tiene como objetivo desarrollar una solución digital integrada (aplicación móvil y plataforma web) para mejorar la programación de transporte de trabajadores en faena de la empresa MPM, reduciendo los costos operativos y mejorando la calidad de vida de los empleados.",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@prisma/client": "^6.5.0",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "express-validator": "^7.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "prisma": "^6.5.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}

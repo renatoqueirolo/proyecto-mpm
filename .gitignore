@@ -1,0 +1,33 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+
+# Logs
+logs
+*.log
+*.csv
+*.out
+*.pid
+*.gz
+
+# Prisma
+prisma/dev.db
+prisma/migrations/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Prisma Client (se puede regenerar)
+.prisma/
+
+# Optional: Coverage / Test outputs
+coverage/
