@@ -1,31 +1,53 @@
 const jwt = require('jsonwebtoken');
+const { PrismaClient } = require('@prisma/client');
 
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // "Bearer <token>"
+const prisma = new PrismaClient();
+const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
-  if (!token) return res.status(401).json({ error: 'Token requerido' });
+// Verifica que el usuario esté autenticado y lo carga desde la base de datos
+const userMustBeLogged = async (req, res, next) => {
+  try {
+    console.log("Ejecutando middleware: verificar usuario autenticado");
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Token inválido' });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) throw new Error("El token no fue enviado");
 
-    req.user = user; // { id, role }
+    const userToken = authHeader.split(" ")[1];
+    const decoded = jwt.verify(userToken, JWT_SECRET);
+
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.user.id },
+      select: { id: true, email: true, name: true, role: true },
+    });
+
+    if (!user) throw new Error("El usuario del token no existe");
+
+    req.user = user; // Guardamos el usuario en la request para los próximos middleware/controladores
     next();
-  });
+  } catch (error) {
+    console.error("Error en userMustBeLogged:", error.message);
+    return res.status(401).json({ error: error.message });
+  }
 };
 
-// Middleware para autorizar por rol
-const authorizeRoles = (...roles) => {
-  return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: 'Usuario no autenticado' });
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ error: 'No tienes permiso para acceder a esta ruta' });
+// Verifica que el usuario tenga rol 'admin'
+const userMustBeAdmin = (req, res, next) => {
+  try {
+    console.log("Ejecutando middleware: verificar rol de administrador");
+
+    const user = req.user;
+    if (!user || user.role.toLowerCase() !== "admin") {
+      throw new Error("Acceso restringido a administradores");
     }
+
     next();
-  };
+  } catch (error) {
+    console.error("Error en userMustBeAdmin:", error.message);
+    return res.status(403).json({ error: error.message });
+  }
 };
 
 module.exports = {
-  authenticateToken,
-  authorizeRoles
+  userMustBeLogged,
+  userMustBeAdmin,
 };
