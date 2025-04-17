@@ -55,9 +55,19 @@ const deleteAssignmentBus = async (req, res) => {
   }
 };
 
+const deleteAllAssignmentBus = async (_req, res) => {
+  try {
+    await prisma.assignmentBus.deleteMany({});
+    res.status(200).json({ message: "Todas las asignaciones de buses fueron eliminadas correctamente." });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   getAssignmentBuses,
   createAssignmentBus,
   updateAssignmentBus,
   deleteAssignmentBus,
+  deleteAllAssignmentBus,
 };

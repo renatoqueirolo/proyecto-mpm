@@ -50,9 +50,19 @@ const deleteBus = async (req, res) => {
   }
 };
 
+const deleteAllBuses = async (_req, res) => {
+  try {
+    await prisma.bus.deleteMany({});
+    res.status(200).json({ message: "Todos los buses fueron eliminados correctamente." });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   getBuses,
   createBus,
   updateBus,
   deleteBus,
+  deleteAllBuses,
 };

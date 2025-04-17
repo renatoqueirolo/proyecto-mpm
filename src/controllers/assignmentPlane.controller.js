@@ -55,9 +55,19 @@ const deleteAssignmentPlane = async (req, res) => {
   }
 };
 
+const deleteAllAssignmentPlanes = async (_req, res) => {
+  try {
+    await prisma.assignmentPlane.deleteMany({});
+    res.status(200).json({ message: "Todas las asignaciones de vuelos fueron eliminadas correctamente." });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   getAssignmentPlanes,
   createAssignmentPlane,
   updateAssignmentPlane,
   deleteAssignmentPlane,
+  deleteAllAssignmentPlanes,
 };

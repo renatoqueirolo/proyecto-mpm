@@ -13,6 +13,21 @@ const getWorkers = async (_req, res) => {
   }
 };
 
+const getWorkerById = async (req, res) => {
+  try {
+    const { rut } = req.params;
+    const worker = await prisma.worker.findUnique({ where: { rut } });
+    if (!worker) {
+      return res.status(404).json({ message: "Trabajador no encontrado" });
+    }
+    return res.json(worker);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  } finally {
+    await prisma.$disconnect();
+  }
+};
+
 const createWorker = async (req, res) => {
   try {
     const {
@@ -41,7 +56,7 @@ const createWorker = async (req, res) => {
       }
     });
 
-    return res.json(newWorker);
+    return res.status(201).json(newWorker);
   } catch (error) {
     console.error("Error al crear trabajador ->", error.message);
     return res.status(500).json({ message: error.message });
@@ -50,7 +65,52 @@ const createWorker = async (req, res) => {
   }
 };
 
+const updateWorker = async (req, res) => {
+  try {
+    const { rut } = req.params;
+    const updated = await prisma.worker.update({
+      where: { rut },
+      data: req.body
+    });
+    return res.status(200).json(updated);
+  } catch (error) {
+    console.error("Error al actualizar trabajador ->", error.message);
+    return res.status(500).json({ message: error.message });
+  } finally {
+    await prisma.$disconnect();
+  }
+};
+
+const deleteWorker = async (req, res) => {
+  try {
+    const { rut } = req.params;
+    await prisma.worker.delete({ where: { rut } });
+    return res.status(204).send();
+  } catch (error) {
+    console.error("Error al eliminar trabajador ->", error.message);
+    return res.status(500).json({ message: error.message });
+  } finally {
+    await prisma.$disconnect();
+  }
+};
+
+const deleteAllWorkers = async (_req, res) => {
+  try {
+    await prisma.worker.deleteMany({});
+    return res.status(200).json({ message: "Todos los trabajadores fueron eliminados." });
+  } catch (error) {
+    console.error("Error al eliminar todos los trabajadores ->", error.message);
+    return res.status(500).json({ message: error.message });
+  } finally {
+    await prisma.$disconnect();
+  }
+};
+
 module.exports = {
   getWorkers,
+  getWorkerById,
   createWorker,
+  updateWorker,
+  deleteWorker,
+  deleteAllWorkers
 };

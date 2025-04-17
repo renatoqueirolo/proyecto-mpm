@@ -5,11 +5,13 @@ const {
   createAssignmentBus,
   updateAssignmentBus,
   deleteAssignmentBus,
+  deleteAllAssignmentBus,
 } = require('../controllers/assignmentBus.controller');
 
-router.get('/assignments', getAssignmentBuses);
-router.post('/assignments', createAssignmentBus);
-router.put('/assignments/:id', updateAssignmentBus);
-router.delete('/assignments/:id', deleteAssignmentBus);
+router.get('/bus-assignments', getAssignmentBuses);
+router.post('/bus-assignments', createAssignmentBus);
+router.put('/bus-assignments/:id', updateAssignmentBus);
+router.delete('/bus-assignments/:id', deleteAssignmentBus);
+router.delete('/bus-assignments', deleteAllAssignmentBus);
 
 module.exports = router;
