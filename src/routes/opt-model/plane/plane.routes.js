@@ -6,7 +6,7 @@ const {
   updatePlane,
   deletePlane,
   deleteAllPlanes
-} = require('../controllers/plane.controller');
+} = require('../../../controllers/opt-model/plane/plane.controller');
 
 router.get('/planes', getPlanes);
 router.post('/planes', createPlane);

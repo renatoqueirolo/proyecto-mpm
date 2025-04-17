@@ -6,7 +6,7 @@ const {
   updateAssignmentPlane,
   deleteAssignmentPlane,
   deleteAllAssignmentPlanes,
-} = require('../controllers/assignmentPlane.controller');
+} = require('../../../controllers/opt-model/plane/assignmentPlane.controller');
 
 router.get('/plane-assignments', getAssignmentPlanes);
 router.post('/plane-assignments', createAssignmentPlane);

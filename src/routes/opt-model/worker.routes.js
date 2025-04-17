@@ -7,7 +7,7 @@ const {
   updateWorker,
   deleteWorker,
   deleteAllWorkers
-} = require('../controllers/worker.controller');
+} = require('../../controllers/opt-model/worker.controller');
 
 router.get('/workers', getWorkers);
 router.get('/workers/:rut', getWorkerById);
