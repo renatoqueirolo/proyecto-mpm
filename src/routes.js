@@ -19,4 +19,8 @@ router.use(planeRoutes);
 const assignmentPlaneRoutes = require('./routes/assignmentPlane.routes');
 router.use(assignmentPlaneRoutes);
 
+const optimizeRoutes = require('./routes/optimization.routes');
+router.use(optimizeRoutes);
+
+
 module.exports = router;
