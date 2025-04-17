@@ -106,11 +106,24 @@ const deleteAllWorkers = async (_req, res) => {
   }
 };
 
+const importarTrabajadores = require('../../scripts/importWorkers');
+
+const importarDesdeExcel = async (req, res) => {
+  try {
+    const mensaje = await importarTrabajadores();
+    res.status(200).json({ message: mensaje });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
 module.exports = {
   getWorkers,
   getWorkerById,
   createWorker,
   updateWorker,
   deleteWorker,
-  deleteAllWorkers
+  deleteAllWorkers,
+  importarDesdeExcel
 };

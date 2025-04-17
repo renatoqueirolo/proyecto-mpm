@@ -6,7 +6,8 @@ const {
   createWorker,
   updateWorker,
   deleteWorker,
-  deleteAllWorkers
+  deleteAllWorkers,
+  importarDesdeExcel
 } = require('../controllers/worker.controller');
 
 router.get('/workers', getWorkers);
@@ -15,5 +16,6 @@ router.post('/workers', createWorker);
 router.put('/workers/:rut', updateWorker);
 router.delete('/workers/:rut', deleteWorker);
 router.delete('/workers', deleteAllWorkers);
+router.post('/workers-import', importarDesdeExcel);
 
 module.exports = router;
