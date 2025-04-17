@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Este proyecto tiene como objetivo desarrollar una solución digital integrada (aplicación móvil y plataforma web) para mejorar la programación de transporte de trabajadores en faena de la empresa MPM, reduciendo los costos operativos y mejorando la calidad de vida de los empleados.",
   "main": "index.js",
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
   "scripts": {
     "dev": "nodemon src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"

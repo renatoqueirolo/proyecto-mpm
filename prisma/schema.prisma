@@ -21,3 +21,69 @@ model User {
   role     String
   createdAt DateTime @default(now())
 }
+
+model Worker {
+  rut           String           @id
+  nombreCompleto String
+  subida        Boolean          
+  telefono      String?
+  email         String?
+  region        String?
+  comuna        String?
+  acercamiento  String?
+  origenAvion   String?
+  destinoAvion  String?
+
+  assignmentBuses  AssignmentBus[]
+  assignmentPlanes AssignmentPlane[]
+}
+
+model Bus {
+  id_bus         String          @id
+  capacidad      Int
+  subida         Boolean
+  horario_salida DateTime
+  horario_llegada DateTime
+  comunas_origen String
+  comunas_destino String
+
+  assignmentBuses AssignmentBus[]
+}
+
+model AssignmentBus {
+  id_assignment_bus String @id
+  fecha             DateTime
+  trayecto          String // ida/vuelta
+  estado            String // asignado, confirmado, cancelado
+
+  workerRut String
+  busId     String
+
+  worker Worker @relation(fields: [workerRut], references: [rut])
+  bus    Bus    @relation(fields: [busId], references: [id_bus])
+}
+
+model Plane {
+  id_plane        String   @id
+  capacidad       Int
+  subida          Boolean
+  horario_salida  DateTime
+  horario_llegada DateTime
+  ciudad_origen   String
+  ciudad_destino  String
+
+  assignmentPlanes AssignmentPlane[]
+}
+
+model AssignmentPlane {
+  id_assignment_plane String @id
+  fecha               DateTime
+  trayecto            String // ida/vuelta
+  estado              String // asignado, confirmado, cancelado
+
+  workerRut String
+  planeId   String
+
+  worker Worker @relation(fields: [workerRut], references: [rut])
+  plane  Plane  @relation(fields: [planeId], references: [id_plane])
+}

@@ -1,28 +1,21 @@
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const morgan = require('morgan');
 
-const authRoutes = require('./routes/auth.routes');
-const userRoutes = require('./routes/users.routes');
-const excelRoutes = require('./routes/excel.routes');
-
-const app = express();
+const app = require('./app');
+const { PrismaClient } = require('@prisma/client');
 const PORT = process.env.PORT || 3000;
+const prisma = new PrismaClient();
 
-app.use(cors());
-app.use(morgan('dev'));
-app.use(express.json());
+async function main() {
+  try {
+    await prisma.$connect();
+    console.log("Conectado a la base de datos");
+    app.listen(PORT, () => {
+      console.log(`Servidor escuchando en http://localhost:${PORT}`);
+    });
+  }
+  catch (error) {
+    console.error("Error al conectar a la base de datos:", error);
+  }
+}
 
-app.use('/auth', authRoutes);
-app.use('/users', userRoutes);
-app.use('/excel', excelRoutes);
-
-
-app.get('/', (req, res) => {
-  res.send('Servidor MPM funcionando 🚀');
-});
-
-app.listen(PORT, () => {
-  console.log(`Servidor escuchando en http://localhost:${PORT}`);
-});
+main()
