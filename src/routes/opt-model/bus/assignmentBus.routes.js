@@ -6,7 +6,7 @@ const {
   updateAssignmentBus,
   deleteAssignmentBus,
   deleteAllAssignmentBus,
-} = require('../controllers/assignmentBus.controller');
+} = require('../../../controllers/opt-model/bus/assignmentBus.controller');
 
 router.get('/bus-assignments', getAssignmentBuses);
 router.post('/bus-assignments', createAssignmentBus);

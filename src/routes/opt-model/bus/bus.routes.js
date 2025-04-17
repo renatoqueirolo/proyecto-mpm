@@ -6,7 +6,7 @@ const {
   updateBus,
   deleteBus,
   deleteAllBuses,
-} = require('../controllers/bus.controller');
+} = require('../../../controllers/opt-model/bus/bus.controller');
 
 router.get('/buses', getBuses);
 router.post('/buses', createBus);
