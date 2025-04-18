@@ -59,10 +59,22 @@ const deleteAllPlanes = async (_req, res) => {
   }
 };
 
+const importarPlanes = require('../../../scripts/importPlanes');
+
+const importarDesdeExcel = async (req, res) => {
+  try {
+    const mensaje = await importarPlanes();
+    res.status(200).json({ message: mensaje });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   getPlanes,
   createPlane,
   updatePlane,
   deletePlane,
   deleteAllPlanes,
+  importarDesdeExcel,
 };

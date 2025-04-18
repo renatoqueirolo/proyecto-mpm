@@ -6,10 +6,8 @@ const prisma = new PrismaClient();
 
 const importarTrabajadores = async () => {
   try {
-    // 1. Cargar planillas desde archivos
     const archivoCalama = xlsx.readFile(path.join(__dirname, '../datos/Nomina de Traslado Transp. Transvan Spa V región Subida 07-04-2025.xlsx'));
     const archivoBajada = xlsx.readFile(path.join(__dirname, '../datos/Nomina de Traslado Transp. Transvan Spa V región Bajada 08-04-2025.xlsx'));
-
 
     const sheets = [
       { libro: archivoCalama, hoja: 'V REGION SUBIDA CALAMA 07-04-25', subida: 1 },
@@ -32,7 +30,6 @@ const importarTrabajadores = async () => {
         const acercamiento = row["ACERCAMIENTO"]?.toUpperCase().trim();
         const [origenAvion, destinoAvion] = row["ORIGEN / DESTINO"]?.split("/")?.map(s => s.trim().toUpperCase()) || [];
 
-        // Evita duplicados por rut
         const existe = await prisma.worker.findUnique({ where: { rut } });
         if (existe) continue;
 
@@ -42,7 +39,7 @@ const importarTrabajadores = async () => {
             nombreCompleto,
             subida: subida === 1,
             telefono,
-            email: null, // no viene en la planilla
+            email: null,
             region,
             comuna,
             acercamiento,
@@ -54,12 +51,12 @@ const importarTrabajadores = async () => {
       }
     }
 
-    console.log(`✔ Se importaron ${totalInsertados} trabajadores`);
+    return `✔ Se importaron ${totalInsertados} trabajadores`;
   } catch (error) {
-    console.error("❌ Error al importar trabajadores:", error.message);
+    throw new Error("❌ Error al importar trabajadores: " + error.message);
   } finally {
     await prisma.$disconnect();
   }
 };
 
-importarTrabajadores();
+module.exports = importarTrabajadores;

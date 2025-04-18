@@ -31,3 +31,6 @@ Thumbs.db
 
 # Optional: Coverage / Test outputs
 coverage/
+
+venv/
+

@@ -3,7 +3,7 @@ const router = express.Router({ mergeParams: true });
 
 // Admin Routes
 const adminAuthRoutes = require('./admin/admin.routes');
-router.use('/admin/users', adminAuthRoutes);
+router.use('/admin', adminAuthRoutes);
 
 // User Routes
 const userAuthRoutes = require('./users/user.routes');

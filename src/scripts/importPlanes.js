@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 const convertirHoraStringAHoy = (horaStr) => {
   const [horas, minutos] = horaStr.split(":").map(Number);
   const ahora = new Date();
-  ahora.setHours(horas, minutos, 0, 0); // hora, minuto, segundo, milisegundo
+  ahora.setHours(horas, minutos, 0, 0); 
   return ahora;
 };
 
@@ -51,13 +51,12 @@ const importarPlanes = async () => {
       totalInsertados++;
     }
 
-    console.log(`✔ Se importaron ${totalInsertados} vuelos charter`);
+    return `✔ Se importaron ${totalInsertados} vuelos charter`;
   } catch (error) {
-    console.error("❌ Error al importar vuelos:", error.message);
+    throw new Error("❌ Error al importar vuelos: " + error.message);
   } finally {
     await prisma.$disconnect();
   }
 };
 
-importarPlanes();
-
+module.exports = importarPlanes;
