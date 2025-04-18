@@ -1,5 +1,3 @@
-# resolver_modelo.py (con asignaciones guardadas en la base de datos)
-
 from ortools.sat.python import cp_model
 import pandas as pd
 import numpy as np

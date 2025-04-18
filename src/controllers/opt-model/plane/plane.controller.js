@@ -59,7 +59,7 @@ const deleteAllPlanes = async (_req, res) => {
   }
 };
 
-const importarPlanes = require('../../scripts/importPlanes');
+const importarPlanes = require('../../../scripts/importPlanes');
 
 const importarDesdeExcel = async (req, res) => {
   try {
@@ -76,5 +76,5 @@ module.exports = {
   updatePlane,
   deletePlane,
   deleteAllPlanes,
-  importarDesdeExcel
+  importarDesdeExcel,
 };

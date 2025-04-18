@@ -4,10 +4,11 @@ const path = require('path');
 
 const prisma = new PrismaClient();
 
+// Función para convertir "HH:mm" a un Date válido con la fecha de hoy
 const convertirHoraStringAHoy = (horaStr) => {
   const [horas, minutos] = horaStr.split(":").map(Number);
   const ahora = new Date();
-  ahora.setHours(horas, minutos, 0, 0);
+  ahora.setHours(horas, minutos, 0, 0); 
   return ahora;
 };
 

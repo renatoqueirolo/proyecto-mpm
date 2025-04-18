@@ -11,41 +11,6 @@ const register = async (req, res) => {
 };
 
 
-// const register = async (req, res) => {
-//   try {
-//     const { name, email, password, role } = req.body;
-//     if (!email || !password || !name ) throw new Error("Todos los campos son obligatorios.");
-
-//     const hashedPassword = await bcrypt.hash(password, 10);
-
-//     const newUser = await prisma.user.create({
-//       data: {
-//         name,
-//         email,
-//         password: hashedPassword,
-//         role
-//       }
-//     });
-
-//     const payloadSanitizedUser = {
-//       id: newUser.id,
-//       email: newUser.email,
-//       name: newUser.name,
-//       role: newUser.role,
-//       updatedAt: newUser.updatedAt,
-//       createdAt: newUser.createdAt,
-//     };
-//     const token = jwt.sign({ user: payloadSanitizedUser }, JWT_SECRET, { expiresIn: "12h" });
-
-//     return res.json({ user: payloadSanitizedUser, token });
-//   } catch (error) {
-//     console.error("Error al intentar registrar un nuevo usuario ->", error.message);
-//     return res.status(500).json({ message: error.message });
-//   } finally {
-//     await prisma.$disconnect();
-//   }
-// };
-
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;

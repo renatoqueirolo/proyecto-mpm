@@ -1,5 +1,3 @@
-# resolver_modelo.py (versión integrada con PostgreSQL via psycopg2)
-
 from ortools.sat.python import cp_model
 import pandas as pd
 import numpy as np
