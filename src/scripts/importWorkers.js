@@ -6,8 +6,8 @@ const prisma = new PrismaClient();
 
 const importarTrabajadores = async () => {
   try {
-    const archivoCalama = xlsx.readFile(path.join(__dirname, '../datos/Nomina de Traslado Transp. Transvan Spa V región Subida 07-04-2025.xlsx'));
-    const archivoBajada = xlsx.readFile(path.join(__dirname, '../datos/Nomina de Traslado Transp. Transvan Spa V región Bajada 08-04-2025.xlsx'));
+    const archivoCalama = xlsx.readFile(path.join(__dirname, '../../datos/Nomina de Traslado Transp. Transvan Spa V región Subida 07-04-2025.xlsx'));
+    const archivoBajada = xlsx.readFile(path.join(__dirname, '../../datos/Nomina de Traslado Transp. Transvan Spa V región Bajada 08-04-2025.xlsx'));
 
     const sheets = [
       { libro: archivoCalama, hoja: 'V REGION SUBIDA CALAMA 07-04-25', subida: 1 },
