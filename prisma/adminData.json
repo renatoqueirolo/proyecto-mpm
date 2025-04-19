@@ -3,5 +3,10 @@
       "email": "sebalopeza@uc.cl",
       "password": "0123456789",
       "name": "Sebastián López"
+    },
+    {
+      "email": "mati.murata@uc.cl",
+      "password": "0123456789",
+      "name": "Matias Murata"
     }
   ]

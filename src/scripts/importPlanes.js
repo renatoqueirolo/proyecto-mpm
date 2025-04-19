@@ -14,11 +14,11 @@ const convertirHoraStringAHoy = (horaStr) => {
 
 const importarPlanes = async () => {
   try {
-    const archivo = xlsx.readFile(path.join(__dirname, '../datos/vuelos_charter.xlsx'));
+    const archivo = xlsx.readFile(path.resolve(__dirname, '../../datos/vuelos_charter.xlsx'));
     const hoja = archivo.SheetNames[0];
     const data = xlsx.utils.sheet_to_json(archivo.Sheets[hoja]);
 
-    let totalInsertados = 0;
+    let avionesInsertados = [];
 
     for (const row of data) {
       const {
@@ -36,7 +36,7 @@ const importarPlanes = async () => {
       const yaExiste = await prisma.plane.findUnique({ where: { id_plane } });
       if (yaExiste) continue;
 
-      await prisma.plane.create({
+      const nuevoAvion = await prisma.plane.create({
         data: {
           id_plane: id_plane.toString(),
           capacidad: parseInt(capacidad),
@@ -48,10 +48,11 @@ const importarPlanes = async () => {
         }
       });
 
-      totalInsertados++;
+      avionesInsertados.push(nuevoAvion);
     }
 
-    return `✔ Se importaron ${totalInsertados} vuelos charter`;
+    // Devolvemos los aviones importados como respuesta
+    return avionesInsertados;
   } catch (error) {
     throw new Error("❌ Error al importar vuelos: " + error.message);
   } finally {
