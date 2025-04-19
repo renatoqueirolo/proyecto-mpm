@@ -10,5 +10,8 @@ router.use(uploadExcelRoutes);
 const optModelRoutes = require('./routes/opt-model/opt-model.routes');
 router.use(optModelRoutes);
 
+const dashboardRoutes = require('./routes/dashboard/dashboard.routes');
+router.use('/dashboard', dashboardRoutes);
+
 
 module.exports = router;
