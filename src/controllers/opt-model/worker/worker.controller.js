@@ -1,4 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
+const xlsx = require('xlsx');
 const prisma = new PrismaClient();
 
 const getWorkers = async (_req, res) => {
@@ -106,15 +107,66 @@ const deleteAllWorkers = async (_req, res) => {
   }
 };
 
-
-const importarTrabajadores = require('../../../scripts/importWorkers');
-
 const importarDesdeExcel = async (req, res) => {
   try {
-    const mensaje = await importarTrabajadores();
-    res.status(200).json({ message: mensaje });
+    if (!req.files || !req.files.file) {
+      return res.status(400).json({ error: 'No se ha subido ningún archivo' });
+    }
+
+    const file = req.files.file;
+    const workbook = xlsx.read(file.data, { type: 'buffer' });
+    const sheetName = req.body.sheetName || workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    
+    if (!sheet) {
+      return res.status(400).json({ error: `No se encontró la hoja ${sheetName}` });
+    }
+
+    const data = xlsx.utils.sheet_to_json(sheet);
+    let totalInsertados = 0;
+
+    for (const row of data) {
+      const rut = row["RUT"];
+      if (!rut) continue;
+
+      const nombreCompleto = row["NOMBRE COMPLETO"];
+      const telefono = row["TELEFONO"]?.toString();
+      const region = row["REGION"];
+      const comuna = row["COMUNA"];
+      const acercamiento = row["ACERCAMIENTO"]?.toUpperCase().trim();
+      const origenAvion = row["ORIGEN AVION"];
+      const destinoAvion = row["DESTINO AVION"];
+
+      const existe = await prisma.worker.findUnique({ where: { rut } });
+      if (existe) continue;
+
+      await prisma.worker.create({
+        data: {
+          rut,
+          nombreCompleto,
+          subida: true,
+          telefono,
+          email: null,
+          region,
+          comuna,
+          acercamiento,
+          origenAvion,
+          destinoAvion,
+        }
+      });
+      totalInsertados++;
+    }
+
+    return res.status(200).json({ 
+      message: `Se importaron ${totalInsertados} trabajadores exitosamente`,
+      data: data,
+      columns: Object.keys(data[0] || {})
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Error al importar trabajadores:", error);
+    return res.status(500).json({ error: error.message });
+  } finally {
+    await prisma.$disconnect();
   }
 };
 
