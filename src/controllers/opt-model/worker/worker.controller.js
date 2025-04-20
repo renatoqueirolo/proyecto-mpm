@@ -158,7 +158,9 @@ const importarDesdeExcel = async (req, res) => {
     }
 
     return res.status(200).json({ 
-      message: `Se importaron ${totalInsertados} trabajadores exitosamente`,
+      message: totalInsertados === 0 
+        ? "Todos los trabajadores ya existían en la base de datos" 
+        : `Se añadieron ${totalInsertados} trabajadores nuevos exitosamente, el resto ya existían en la base de datos`,
       data: data,
       columns: Object.keys(data[0] || {})
     });

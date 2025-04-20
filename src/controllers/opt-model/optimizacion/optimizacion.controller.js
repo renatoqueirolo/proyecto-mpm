@@ -14,8 +14,12 @@ async function runFullOptimizacion(req, res) {
 
     console.log('Ejecutando crear_buses.py...');
     await new Promise((resolve, reject) => {
-      exec('python src/python/crear_buses.py', (error, stdout, stderr) => {
-        if (error) return reject(error);
+      exec('python3 src/scripts/crear_buses.py', (error, stdout, stderr) => {
+        if (error) {
+          console.error('Error en crear_buses.py:', error);
+          console.error('stderr:', stderr);
+          return reject(error);
+        }
         console.log(stdout);
         resolve();
       });
@@ -23,8 +27,12 @@ async function runFullOptimizacion(req, res) {
 
     console.log('Ejecutando resolver_modelo.py...');
     await new Promise((resolve, reject) => {
-      exec('python src/python/resolver_modelo.py', (error, stdout, stderr) => {
-        if (error) return reject(error);
+      exec('python3 src/scripts/resolver_modelo.py', (error, stdout, stderr) => {
+        if (error) {
+          console.error('Error en resolver_modelo.py:', error);
+          console.error('stderr:', stderr);
+          return reject(error);
+        }
         console.log(stdout);
         resolve();
       });
