@@ -328,11 +328,11 @@ for t in trabajadores:
             model.Add(y[(t, v)] == 0)
 
     # Restricción de conexión temporal
-    for b in buses:
+    """for b in buses:
         for v in vuelos:
             if subida:
                 if HB[b] + 180 > HV[v]:
-                    model.AddBoolOr([x[(t, b)].Not(), y[(t, v)].Not()])
+                    model.AddBoolOr([x[(t, b)].Not(), y[(t, v)].Not()])"""
 
 # -------------------------
 # Logs para depuración
