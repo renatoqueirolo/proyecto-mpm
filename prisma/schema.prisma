@@ -59,8 +59,8 @@ model AssignmentBus {
   workerRut String
   busId     String
 
-  worker Worker @relation(fields: [workerRut], references: [rut])
-  bus    Bus    @relation(fields: [busId], references: [id_bus])
+  worker Worker @relation(fields: [workerRut], references: [rut], onDelete: Cascade)
+  bus    Bus    @relation(fields: [busId], references: [id_bus], onDelete: Cascade)
 }
 
 model Plane {
@@ -84,6 +84,6 @@ model AssignmentPlane {
   workerRut String
   planeId   String
 
-  worker Worker @relation(fields: [workerRut], references: [rut])
-  plane  Plane  @relation(fields: [planeId], references: [id_plane])
+  worker Worker @relation(fields: [workerRut], references: [rut], onDelete: Cascade)
+  plane  Plane  @relation(fields: [planeId], references: [id_plane], onDelete: Cascade)
 }
