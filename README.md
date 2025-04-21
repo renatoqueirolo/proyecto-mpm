@@ -40,6 +40,14 @@ cd proyecto-mpm
 
 ```bash
 npm install
+
+python3 -m venv venv
+
+# Activar el entorno virtual
+source venv/bin/activate
+
+# Instalar requerimientos
+pip install -r requirements.txt
 ```
 
 ---
