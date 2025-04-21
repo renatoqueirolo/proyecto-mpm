@@ -29,6 +29,14 @@ const importarTrabajadores = async () => {
         const comuna = row["COMUNA / RESIDENCIA"];
         const acercamiento = row["ACERCAMIENTO"]?.toUpperCase().trim();
         const [origenAvion, destinoAvion] = row["ORIGEN / DESTINO"]?.split("/")?.map(s => s.trim().toUpperCase()) || [];
+        await prisma.trabajadorTurno.create({
+          data: {
+            trabajadorId: rut,
+            turnoId,
+            origen: origenAvion,
+            destino: destinoAvion,
+          },
+        });        
 
         const existe = await prisma.worker.findUnique({ where: { rut } });
         if (existe) continue;

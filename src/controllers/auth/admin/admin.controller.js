@@ -40,7 +40,7 @@ const createUser = async (req, res) => {
 const getUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await prisma.user.findUnique({ where: { id: parseInt(id) } });
+    const user = await prisma.user.findUnique({ where: { id: id } });
     if (!user) throw new Error("El usuario con el ID señalado no existe.");
     return res.json(user);
   } catch (error) {
@@ -56,7 +56,7 @@ const updateUser = async (req, res) => {
     const { id } = req.params;
     const { name, email, password, role } = req.body;
     const updatedUser = await prisma.user.update({
-      where: { id: parseInt(id) },
+      where: { id: id },
       data: { name, email, password, role },
     });
     return res.status(200).json({ message: "Usuario actualizado correctamente.", updatedUser });
@@ -71,7 +71,7 @@ const updateUser = async (req, res) => {
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const deletedUser = await prisma.user.delete({ where: { id: parseInt(id) } });
+    const deletedUser = await prisma.user.delete({ where: { id: id } });
     return res.status(200).json({ message: "Usuario eliminado correctamente.", deletedUser });
   } catch (error) {
     console.error("Error al eliminar usuario ->", error.message);
@@ -81,10 +81,63 @@ const deleteUser = async (req, res) => {
   }
 };
 
+// Read all Planes
+const getPlanes = async (req, res) => {
+  try {
+    const planes = await prisma.plane.findMany();
+    res.status(200).json(planes);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Create Plane
+const createPlane = async (req, res) => {
+  try {
+    const newPlane = await prisma.plane.create({
+      data: req.body,
+    });
+    res.status(201).json(newPlane);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Delete Plane
+const deletePlane = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.plane.delete({
+      where: { id: id },
+    });
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Update Plane
+const updatePlane = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updatedPlane = await prisma.plane.update({
+      where: { id: id },
+      data: req.body,
+    });
+    res.status(200).json(updatedPlane);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   getUsers,
   createUser,
   getUser,
   updateUser,
   deleteUser,
+  getPlanes,
+  createPlane,
+  deletePlane,
+  updatePlane
 };

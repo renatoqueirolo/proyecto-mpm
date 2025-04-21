@@ -1,6 +1,8 @@
 const { PrismaClient } = require('@prisma/client');
 const xlsx = require('xlsx');
 const path = require('path');
+const turnoId = process.argv[2]; 
+
 
 const prisma = new PrismaClient();
 
@@ -38,15 +40,17 @@ const importarPlanes = async () => {
 
       const nuevoAvion = await prisma.plane.create({
         data: {
-          id_plane: id_plane.toString(),
-          capacidad: parseInt(capacidad),
-          subida: subida === 1 || subida === true,
-          horario_salida: convertirHoraStringAHoy(horario_salida),
-          horario_llegada: convertirHoraStringAHoy(horario_llegada),
-          ciudad_origen: ciudad_origen.toUpperCase().trim(),
-          ciudad_destino: ciudad_destino.toUpperCase().trim(),
+          id_plane,
+          capacidad,
+          subida,
+          horario_salida,
+          horario_llegada,
+          ciudad_origen,
+          ciudad_destino,
+          turno: { connect: { id: turnoId } }
         }
       });
+      
 
       avionesInsertados.push(nuevoAvion);
     }

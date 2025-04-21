@@ -25,7 +25,7 @@ async function addAdmin() {
                 email: admin.email,
                 password: passwordHash,
                 name: admin.name,
-                role: "admin",
+                role: "ADMIN",
                 createdAt: new Date()
             }
         });

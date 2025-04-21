@@ -13,5 +13,8 @@ router.use(optModelRoutes);
 const dashboardRoutes = require('./routes/dashboard/dashboard.routes');
 router.use('/dashboard', dashboardRoutes);
 
+const turnosRoutes = require('./routes/turno/turno.routes')
+router.use('/turnos', turnosRoutes);
+
 
 module.exports = router;

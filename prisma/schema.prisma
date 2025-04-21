@@ -6,6 +6,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  seed = "node prisma/seed.js"
 }
 
 datasource db {
@@ -14,76 +15,149 @@ datasource db {
 }
 
 model User {
-  id       Int    @id @default(autoincrement())
+  id       String    @id @default(cuid())
   name     String
   email    String @unique
   password String
-  role     String
+  role     RolUsuario @default(EJECUTIVO)
   createdAt DateTime @default(now())
+  turnosCreados Turno[] @relation("TurnosDelUsuario")
 }
 
-model Worker {
-  rut           String           @id
-  nombreCompleto String
-  subida        Boolean          
-  telefono      String?
-  email         String?
-  region        String?
-  comuna        String?
-  acercamiento  String?
-  origenAvion   String?
-  destinoAvion  String?
+enum RolUsuario {
+  ADMIN
+  EJECUTIVO
+}
 
-  assignmentBuses  AssignmentBus[]
-  assignmentPlanes AssignmentPlane[]
+model Trabajador {
+  id                String             @id @default(cuid())
+  rut               String             @unique
+  nombreCompleto    String
+  trabajadorTurnos  TrabajadorTurno[]
+  historialAsignacion HistorialAsignacion[]
+}
+
+model Turno {
+  id                 String             @id @default(cuid())
+  fecha              DateTime
+  modeloEjecutado    Boolean
+  creadoEn           DateTime           @default(now())
+  creadoPorId        String
+  creadoPor   User @relation("TurnosDelUsuario", fields: [creadoPorId], references: [id])
+  trabajadoresTurno  TrabajadorTurno[]
+  busTurno           BusTurno[]
+  planeTurno         PlaneTurno[]
+  restricciones      RestriccionTurno[]
+  historialAsignacion HistorialAsignacion[]
+}
+
+model TrabajadorTurno {
+  id            String     @id @default(cuid())
+  trabajadorId  String
+  turnoId       String
+  acercamiento  String
+  origen        String
+  destino       String
+  subida        Boolean
+
+  trabajador    Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+  turno         Turno      @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+
+  assignmentBuses   AssignmentBus[]
+  assignmentPlanes  AssignmentPlane[]
 }
 
 model Bus {
-  id_bus         String          @id
-  capacidad      Int
-  subida         Boolean
+  id        String           @id @default(cuid())
+  capacidad     Int
+  comunas_origen String          // JSON string
+  comunas_destino String         // JSON string
   horario_salida DateTime
   horario_llegada DateTime
-  comunas_origen String
-  comunas_destino String
+
+  busTurno BusTurno[]
+}
+
+model BusTurno {
+  id              String   @id @default(cuid())
+  turnoId         String
+  busId           String
+  capacidad       Int
+  horario_salida  DateTime
+  horario_llegada DateTime
+
+  turno           Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+  bus             Bus      @relation(fields: [busId], references: [id], onDelete: Cascade)
 
   assignmentBuses AssignmentBus[]
 }
 
-model AssignmentBus {
-  id_assignment_bus String @id
-  fecha             DateTime
-  trayecto          String // ida/vuelta
-  estado            String // asignado, confirmado, cancelado
-
-  workerRut String
-  busId     String
-
-  worker Worker @relation(fields: [workerRut], references: [rut])
-  bus    Bus    @relation(fields: [busId], references: [id_bus])
-}
 
 model Plane {
-  id_plane        String   @id
-  capacidad       Int
-  subida          Boolean
-  horario_salida  DateTime
-  horario_llegada DateTime
+  id        String          @id @default(cuid())
+  capacidad Int
   ciudad_origen   String
   ciudad_destino  String
+  horario_salida String
+  horario_llegada String
 
-  assignmentPlanes AssignmentPlane[]
+  planeTurno PlaneTurno[]
+}
+
+model PlaneTurno {
+  id        String   @id @default(cuid())
+  planeId   String
+  turnoId   String
+  capacidad Int
+  horario_salida String
+  horario_llegada String
+
+  plane     Plane    @relation(fields: [planeId], references: [id], onDelete: Cascade)
+  turno     Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+  
+  assignmentPlanes  AssignmentPlane[]
+}
+
+
+model AssignmentBus {
+  id          String     @id @default(cuid())
+  trabajadorTurnoId    String
+  busTurnoId  String
+
+  trabajadorTurno      TrabajadorTurno @relation(fields: [trabajadorTurnoId], references: [id], onDelete: Cascade)
+  busTurno    BusTurno @relation(fields: [busTurnoId], references: [id], onDelete: Cascade)
 }
 
 model AssignmentPlane {
-  id_assignment_plane String @id
-  fecha               DateTime
-  trayecto            String // ida/vuelta
-  estado              String // asignado, confirmado, cancelado
+  id          String     @id @default(cuid())
+  trabajadorTurnoId    String
+  planeTurnoId    String
 
-  workerRut String
-  planeId   String
-
-  worker Worker @relation(fields: [workerRut], references: [rut])
-  plane  Plane  @relation(fields: [planeId], references: [id_plane])
+  trabajadorTurno      TrabajadorTurno @relation(fields: [trabajadorTurnoId], references: [id], onDelete: Cascade)
+  planeTurno       PlaneTurno      @relation(fields: [planeTurnoId], references: [id], onDelete: Cascade)
 }
+
+model RestriccionTurno {
+  id          String   @id @default(cuid())
+  turnoId     String
+  tipo        String
+  valor       String
+  descripcion String?
+
+  turno       Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+}
+
+model HistorialAsignacion {
+  id            String     @id @default(cuid())
+  turnoId       String
+  trabajadorId  String
+  tipo          String
+  medioId       String
+  origen        String
+  destino       String
+  fechaAsignado DateTime   @default(now())
+
+  trabajador    Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+  turno         Turno      @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+}
+
