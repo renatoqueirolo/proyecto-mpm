@@ -97,8 +97,14 @@ const deleteWorker = async (req, res) => {
 
 const deleteAllWorkers = async (_req, res) => {
   try {
+    // First delete all related assignments
+    await prisma.assignmentPlane.deleteMany({});
+    await prisma.assignmentBus.deleteMany({});
+    
+    // Then delete all workers
     await prisma.worker.deleteMany({});
-    return res.status(200).json({ message: "Todos los trabajadores fueron eliminados." });
+    
+    return res.status(200).json({ message: "Todos los trabajadores y sus asignaciones fueron eliminados." });
   } catch (error) {
     console.error("Error al eliminar todos los trabajadores ->", error.message);
     return res.status(500).json({ message: error.message });
@@ -122,20 +128,40 @@ const importarDesdeExcel = async (req, res) => {
       return res.status(400).json({ error: `No se encontró la hoja ${sheetName}` });
     }
 
+    // Determine subida value based on sheet name
+    const isSubida = sheetName.toUpperCase().includes('SUBIDA');
+    const isBajada = sheetName.toUpperCase().includes('BAJADA');
+    
+    if (!isSubida && !isBajada) {
+      return res.status(400).json({ 
+        error: `El nombre de la hoja debe contener 'SUBIDA' o 'BAJADA' para determinar el tipo de trabajadores` 
+      });
+    }
+
     const data = xlsx.utils.sheet_to_json(sheet);
     let totalInsertados = 0;
 
+    const columnMapping = {
+      rut: "RUT",
+      nombreCompleto: "NOMBRE COMPLETO",
+      telefono: "TELÉFONO",
+      region: "REGIÓN",
+      comuna: "COMUNA / RESIDENCIA",
+      acercamiento: "ACERCAMIENTO",
+      origenDestino: "ORIGEN / DESTINO"
+    };
+
     for (const row of data) {
-      const rut = row["RUT"];
+      const rut = row[columnMapping.rut];
       if (!rut) continue;
 
-      const nombreCompleto = row["NOMBRE COMPLETO"];
-      const telefono = row["TELEFONO"]?.toString();
-      const region = row["REGION"];
-      const comuna = row["COMUNA"];
-      const acercamiento = row["ACERCAMIENTO"]?.toUpperCase().trim();
-      const origenAvion = row["ORIGEN AVION"];
-      const destinoAvion = row["DESTINO AVION"];
+      const nombreCompleto = row[columnMapping.nombreCompleto];
+      const telefono = row[columnMapping.telefono]?.toString();
+      const region = row[columnMapping.region];
+      const comuna = row[columnMapping.comuna];
+      const acercamiento = row[columnMapping.acercamiento]?.toUpperCase().trim();
+      
+      const [origenAvion, destinoAvion] = row[columnMapping.origenDestino]?.split('/')?.map(s => s.trim()) || [null, null];
 
       const existe = await prisma.worker.findUnique({ where: { rut } });
       if (existe) continue;
@@ -144,14 +170,14 @@ const importarDesdeExcel = async (req, res) => {
         data: {
           rut,
           nombreCompleto,
-          subida: true,
+          subida: isSubida,  // Use the value determined from sheet name
           telefono,
           email: null,
           region,
           comuna,
           acercamiento,
-          origenAvion,
-          destinoAvion,
+          origenAvion: origenAvion?.toUpperCase() || null,
+          destinoAvion: destinoAvion?.toUpperCase() || null,
         }
       });
       totalInsertados++;
@@ -159,8 +185,8 @@ const importarDesdeExcel = async (req, res) => {
 
     return res.status(200).json({ 
       message: totalInsertados === 0 
-        ? "Todos los trabajadores ya existían en la base de datos" 
-        : `Se añadieron ${totalInsertados} trabajadores nuevos exitosamente, el resto ya existían en la base de datos`,
+        ? "No se encontraron nuevos trabajadores para importar" 
+        : `Se importaron ${totalInsertados} trabajadores ${isSubida ? 'de subida' : 'de bajada'} exitosamente`,
       data: data,
       columns: Object.keys(data[0] || {})
     });
