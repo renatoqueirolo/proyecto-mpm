@@ -129,6 +129,25 @@ const updatePlane = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+const importarPlanes = require('../../../scripts/importPlanes');
+
+const importarDesdeExcel = async (req, res) => {
+  try {
+    // Llamamos a la función que importa los planes
+    const avionesImportados = await importarPlanes();
+    console.log(avionesImportados);
+    // Si los aviones se importan correctamente, los enviamos en la respuesta
+    if (Array.isArray(avionesImportados) && avionesImportados.length > 0) {
+      res.status(200).json(avionesImportados);
+    } else {
+      // En caso de que no se haya importado ningún avión
+      res.status(200).json({ message: 'No se importaron aviones nuevos.' });
+    }
+  } catch (error) {
+    // Si ocurre un error, lo manejamos y enviamos un mensaje adecuado
+    res.status(500).json({ error: error.message });
+  }
+};
 
 module.exports = {
   getUsers,
@@ -139,5 +158,6 @@ module.exports = {
   getPlanes,
   createPlane,
   deletePlane,
-  updatePlane
+  updatePlane,
+  importarDesdeExcel,
 };

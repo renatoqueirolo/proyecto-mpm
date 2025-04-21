@@ -9,6 +9,7 @@ const {
   createPlane,
   deletePlane,
   updatePlane,
+  importarDesdeExcel
 } = require('../../../controllers/auth/admin/admin.controller');
 const {
   userMustBeAdmin,
@@ -159,6 +160,21 @@ router.put('/planes/:id', updatePlane);
  *         description: Error al eliminar el avión
  */
 router.delete('/planes/:id', deletePlane);
+
+/**
+ * @swagger
+ * /planes/import:
+ *   post:
+ *     summary: Importa aviones desde un archivo Excel
+ *     tags:
+ *      - Gestión de Aviones
+ *     responses:
+ *       200:
+ *         description: Respuesta exitosa
+ *       500:
+ *         description: Error al importar los aviones
+ */
+router.post('/planes/import', importarDesdeExcel);
 
 
 module.exports = router;

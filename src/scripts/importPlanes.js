@@ -24,30 +24,27 @@ const importarPlanes = async () => {
 
     for (const row of data) {
       const {
-        id_plane,
+        id,
         capacidad,
-        subida,
         horario_salida,
         horario_llegada,
         ciudad_origen,
         ciudad_destino
       } = row;
+      console.log(row);
+      if (!id || !horario_salida || !horario_llegada) continue;
 
-      if (!id_plane || !horario_salida || !horario_llegada) continue;
-
-      const yaExiste = await prisma.plane.findUnique({ where: { id_plane } });
+      const yaExiste = await prisma.plane.findUnique({ where: { id} });
       if (yaExiste) continue;
 
       const nuevoAvion = await prisma.plane.create({
         data: {
-          id_plane,
+          id,
           capacidad,
-          subida,
           horario_salida,
           horario_llegada,
           ciudad_origen,
           ciudad_destino,
-          turno: { connect: { id: turnoId } }
         }
       });
       
