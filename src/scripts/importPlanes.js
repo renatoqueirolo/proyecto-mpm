@@ -1,18 +1,8 @@
 const { PrismaClient } = require('@prisma/client');
 const ExcelJS = require('exceljs');
 const path = require('path');
-const turnoId = process.argv[2]; 
-
 
 const prisma = new PrismaClient();
-
-// Función para convertir "HH:mm" a un Date válido con la fecha de hoy
-const convertirHoraStringAHoy = (horaStr) => {
-  const [horas, minutos] = horaStr.split(":").map(Number);
-  const ahora = new Date();
-  ahora.setHours(horas, minutos, 0, 0); 
-  return ahora;
-};
 
 const importarPlanes = async () => {
   try {
@@ -23,24 +13,27 @@ const importarPlanes = async () => {
 
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return; // Omitir encabezado
+      
+      const rowValues = Array.isArray(row.values) ? row.values.slice(1) : [];
       const [
         id,
         capacidad,
+        subida, // Ignorar, pero lo dejo si lo necesitas luego
         horario_salida,
         horario_llegada,
         ciudad_origen,
         ciudad_destino
-      ] = row.values.slice(1); // Ignora el índice 0 que es null
+      ] = rowValues;
 
       if (!id || !horario_salida || !horario_llegada) return;
 
       avionesInsertados.push({
-        id,
-        capacidad,
-        horario_salida,
-        horario_llegada,
-        ciudad_origen,
-        ciudad_destino,
+        id: String(id).trim(),
+        capacidad: Number(capacidad),
+        horario_salida: String(horario_salida).trim(), // Ya está bien
+        horario_llegada: String(horario_llegada).trim(),
+        ciudad_origen: String(ciudad_origen).trim().toUpperCase(),
+        ciudad_destino: String(ciudad_destino).trim().toUpperCase(),
       });
     });
 
@@ -51,6 +44,7 @@ const importarPlanes = async () => {
       }
     }
 
+    console.log("Aviones insertados:", avionesInsertados);
     return avionesInsertados;
   } catch (error) {
     throw new Error("❌ Error al importar vuelos: " + error.message);

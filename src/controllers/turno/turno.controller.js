@@ -256,13 +256,17 @@ async function optimizarTurno(req, res) {
     });
 
     // Paso 2: resolver modelo
-    await new Promise((resolve, reject) => {
+    const resultadoModelo = await new Promise((resolve, reject) => {
       execFile('python3', [resolverScript, '--turnoId', id], (err, stdout, stderr) => {
         if (err) return reject(stderr);
         console.log(stdout);
-        resolve();
+        if (stdout.includes("❌ No se encontró solución.")) {
+          return reject("No se encontró solución para el modelo.");
+        }
+        resolve(stdout);
       });
     });
+
     await prisma.turno.update({
       where: { id: id },
       data: {
@@ -272,7 +276,7 @@ async function optimizarTurno(req, res) {
     res.status(200).json({ message: `Modelo ejecutado para turno ${id}` });
   } catch (error) {
     console.error('Error al ejecutar modelo:', error);
-    res.status(500).json({ error: 'Error al ejecutar modelo' });
+    res.status(500).json({ error: `Error al ejecutar modelo: ${error}` });
   }
 }
 
