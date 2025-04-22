@@ -5,6 +5,11 @@ const {
   getUser,
   getUsers,
   updateUser,
+  getPlanes,
+  createPlane,
+  deletePlane,
+  updatePlane,
+  importarDesdeExcel
 } = require('../../../controllers/auth/admin/admin.controller');
 const {
   userMustBeAdmin,
@@ -95,5 +100,81 @@ router.put('/users/:id', updateUser);
  *         description: Error al eliminar usuario
  */
 router.delete('/users/:id', deleteUser);
+
+/**
+ * @swagger
+ * /admin/planes/:
+ *   get:
+ *     summary: Obtiene todos los aviones de la aplicación
+ *     tags:
+ *      - Gestión de Aviones
+ *     responses:
+ *       200:
+ *         description: Respuesta exitosa
+ *       400:
+ *         description: Error al obtener los aviones
+ */
+router.get('/planes', getPlanes);
+
+/**
+ * @swagger
+ * /admin/planes/:
+ *   post:
+ *     summary: Crea un nuevo avión
+ *     tags:
+ *      - Gestión de Aviones
+ *     responses:
+ *       201:
+ *         description: Respuesta exitosa
+ *       500:
+ *         description: Error al crear el avión
+ */
+router.post('/planes', createPlane);
+
+/**
+ * @swagger
+ * /admin/planes/:id:
+ *   put:
+ *     summary: Actualiza un avión existente
+ *     tags:
+ *      - Gestión de Aviones
+ *     responses:
+ *       200:
+ *         description: Respuesta exitosa
+ *       500:
+ *         description: Error al actualizar el avión
+ */
+router.put('/planes/:id', updatePlane);
+
+/**
+ * @swagger
+ * /admin/planes/:id:
+ *   delete:
+ *     summary: Elimina un avión existente
+ *     tags:
+ *      - Gestión de Aviones
+ *     responses:
+ *       204:
+ *         description: Respuesta exitosa
+ *       500:
+ *         description: Error al eliminar el avión
+ */
+router.delete('/planes/:id', deletePlane);
+
+/**
+ * @swagger
+ * /planes/import:
+ *   post:
+ *     summary: Importa aviones desde un archivo Excel
+ *     tags:
+ *      - Gestión de Aviones
+ *     responses:
+ *       200:
+ *         description: Respuesta exitosa
+ *       500:
+ *         description: Error al importar los aviones
+ */
+router.post('/planes/import', importarDesdeExcel);
+
 
 module.exports = router;

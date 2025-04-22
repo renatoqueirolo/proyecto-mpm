@@ -1,148 +1,448 @@
+# import pandas as pd
+# import numpy as np
+# from ortools.sat.python import cp_model
+# from collections import defaultdict
+# import psycopg2
+# from sqlalchemy import create_engine
+# import os
+# from dotenv import load_dotenv
+# import argparse
+# from uuid import uuid4
+# import json
+# import unicodedata
+
+# def normalizar(texto):
+#     return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8').strip().lower()
+
+# parser = argparse.ArgumentParser()
+# parser.add_argument("--turnoId", required=True, help="ID del turno")
+# args = parser.parse_args()
+# turno_id = args.turnoId
+
+# load_dotenv()
+# DB_URL = os.getenv("DATABASE_URL")
+
+# conn = psycopg2.connect(DB_URL)
+# cursor = conn.cursor()
+# engine = create_engine(DB_URL)
+
+# # Cargar trabajadores del turno
+# df_trabajadores = pd.read_sql(f'''
+#     SELECT TT.id, TT."trabajadorId", TT.subida, TT.origen, TT.destino, T.rut, T."nombreCompleto"
+#     FROM "TrabajadorTurno" TT
+#     JOIN "Trabajador" T ON TT."trabajadorId" = T.id
+#     WHERE TT."turnoId" = '{turno_id}';
+# ''', engine)
+
+# if df_trabajadores.empty:
+#     print(f"No hay trabajadores en el turno {turno_id}")
+#     exit()
+
+# # Cargar buses y vuelos del turno
+# df_buses = pd.read_sql(f'''
+#     SELECT BT.*, B."comunas_origen", B."comunas_destino"
+#     FROM "BusTurno" BT
+#     JOIN "Bus" B ON BT."busId" = B."id"
+#     WHERE BT."turnoId" = '{turno_id}';
+# ''', engine)
+
+# df_planes = pd.read_sql(f'''
+#     SELECT PT.*, P."ciudad_origen", P."ciudad_destino"
+#     FROM "PlaneTurno" PT
+#     JOIN "Plane" P ON PT."planeId" = P."id"
+#     WHERE PT."turnoId" = '{turno_id}';
+# ''', engine)
+
+# # Construcción de sets
+# trabajadores = list(df_trabajadores["id"])
+# buses = list(df_buses["id"])
+# planes = list(df_planes["id"])
+
+# CAP_B = {j: int(df_buses[df_buses["id"] == j]["capacidad"].values[0]) for j in buses}
+# CAP_P = {k: int(df_planes[df_planes["id"] == k]["capacidad"].values[0]) for k in planes}
+
+# W_b = {}
+# W_p = {}
+
+# for t in trabajadores:
+#     fila = df_trabajadores[df_trabajadores["id"] == t].iloc[0]
+#     origen_t = normalizar(fila["origen"])
+#     destino_t = normalizar(fila["destino"])
+#     subida = fila["subida"]
+
+#     if subida:
+#         W_b[t] = [
+#             j for j in buses
+#             if origen_t in [normalizar(c) for c in json.loads(df_buses[df_buses["id"] == j]["comunas_origen"].values[0])]
+#             and "santiago" in [normalizar(c) for c in json.loads(df_buses[df_buses["id"] == j]["comunas_destino"].values[0])]
+#         ]
+#         W_p[t] = [
+#             k for k in planes
+#             if normalizar(df_planes[df_planes["id"] == k]["ciudad_origen"].values[0]) == "santiago"
+#             and normalizar(df_planes[df_planes["id"] == k]["ciudad_destino"].values[0]) == destino_t
+#         ]
+#     else:
+#         # Bajada: vuelo desde destino → Santiago, luego bus desde Santiago → comuna
+#         W_p[t] = [
+#             k for k in planes
+#             if normalizar(df_planes[df_planes["id"] == k]["ciudad_origen"].values[0]) == destino_t
+#             and normalizar(df_planes[df_planes["id"] == k]["ciudad_destino"].values[0]) == "santiago"
+#         ]
+#         W_b[t] = [
+#             j for j in buses
+#             if "santiago" in [normalizar(c) for c in json.loads(df_buses[df_buses["id"] == j]["comunas_origen"].values[0])]
+#             and destino_t in [normalizar(c) for c in json.loads(df_buses[df_buses["id"] == j]["comunas_destino"].values[0])]
+#         ]
+
+# # ------------------------------
+# # OR-TOOLS
+# # ------------------------------
+# model = cp_model.CpModel()
+# x = {}
+# y = {}
+# u = {j: model.NewBoolVar(f'u_{j}') for j in buses}
+# v = {k: model.NewBoolVar(f'v_{k}') for k in planes}
+
+# for t in trabajadores:
+#     for j in W_b[t]:
+#         x[t, j] = model.NewBoolVar(f'x_{t}_{j}')
+#         model.Add(x[t, j] <= u[j])
+#     for k in W_p[t]:
+#         y[t, k] = model.NewBoolVar(f'y_{t}_{k}')
+#         model.Add(y[t, k] <= v[k])
+
+# for t in trabajadores:
+#     subida = df_trabajadores[df_trabajadores["id"] == t]["subida"].values[0]
+#     if subida:
+#         model.Add(sum(x[t, j] for j in W_b[t]) == 1)
+#         model.Add(sum(y[t, k] for k in W_p[t]) == 1)
+#     else:
+#         model.Add(sum(y[t, k] for k in W_p[t]) == 1)
+#         model.Add(sum(x[t, j] for j in W_b[t]) == 1)
+
+# for j in buses:
+#     model.Add(sum(x[t, j] for t in trabajadores if (t, j) in x) <= CAP_B[j])
+# for k in planes:
+#     model.Add(sum(y[t, k] for t in trabajadores if (t, k) in y) <= CAP_P[k])
+
+# model.Minimize(sum(u[j] for j in buses) + sum(v[k] for k in planes))
+
+# # ------------------------------
+# # Resolver
+# # ------------------------------
+# solver = cp_model.CpSolver()
+# status = solver.Solve(model)
+
+# if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+#     print("No se encontró solución.")
+#     exit()
+
+
+# # Elimina asignaciones anteriores del turno
+# cursor.execute('''
+#     DELETE FROM "AssignmentBus"
+#     WHERE "busTurnoId" IN (
+#         SELECT id FROM "BusTurno" WHERE "turnoId" = %s
+#     )
+# ''', (turno_id,))
+
+# cursor.execute('''
+#     DELETE FROM "AssignmentPlane"
+#     WHERE "planeTurnoId" IN (
+#         SELECT id FROM "PlaneTurno" WHERE "turnoId" = %s
+#     )
+# ''', (turno_id,))
+# conn.commit()
+
+# # Cargar mapeo de BusTurno y PlaneTurno
+# bus_turno_map = pd.read_sql(f'''
+#     SELECT id, "busId" FROM "BusTurno"
+#     WHERE "turnoId" = '{turno_id}';
+# ''', engine).set_index("busId")["id"].to_dict()
+
+# plane_turno_map = pd.read_sql(f'''
+#     SELECT id, "planeId" FROM "PlaneTurno"
+#     WHERE "turnoId" = '{turno_id}';
+# ''', engine).set_index("planeId")["id"].to_dict()
+
+# # Insertar nuevas asignaciones
+# for t in trabajadores:
+#     for j in W_b[t]:
+#         if solver.Value(x[t, j]):
+#             cursor.execute('''
+#                 INSERT INTO "AssignmentBus" (id, "trabajadorTurnoId", "busTurnoId")
+#                 VALUES (%s, %s, %s)
+#             ''', (str(uuid.uuid4()), t, bus_turno_map[j]))
+
+#     for k in W_p[t]:
+#         if solver.Value(y[t, k]):
+#             cursor.execute('''
+#                 INSERT INTO "AssignmentPlane" (id, "trabajadorTurnoId", "planeTurnoId")
+#                 VALUES (%s, %s, %s)
+#             ''', (str(uuid.uuid4()), t, plane_turno_map[k]))
+
+
+
+# conn.commit()
+# cursor.close()
+# conn.close()
+
+# print(f"Asignaciones realizadas para el turno {turno_id} ✅")
+
 from ortools.sat.python import cp_model
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-from collections import Counter
+import json
 import psycopg2
 import os
+import argparse
 from dotenv import load_dotenv
 from uuid import uuid4
+from datetime import datetime
 from sqlalchemy import create_engine
-import json
+import unicodedata
 
-# Cargar variables de entorno
+def normalizar(texto):
+    if not isinstance(texto, str):
+        return ''
+    return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8').strip().upper()
+
+# Cargar variables
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
 conn = psycopg2.connect(DB_URL)
 cursor = conn.cursor()
 engine = create_engine(DB_URL)
 
-# Carga desde la base de datos
-print("Cargando datos desde la base de datos...")
-df_total = pd.read_sql('SELECT * FROM "Worker";', engine)
-df_aviones = pd.read_sql('SELECT * FROM "Plane";', engine)
-df_buses = pd.read_sql('SELECT * FROM "Bus";', engine)
+# Turno actual
+parser = argparse.ArgumentParser()
+parser.add_argument("--turnoId", required=True, help="ID del turno")
+args = parser.parse_args()
+turno_id = args.turnoId
 
-# Preprocesamiento de datos
-trabajadores = df_total["rut"].tolist()
-comunas_trabajadores = df_total.set_index("rut")["acercamiento"].str.upper().to_dict()
-destino_trabajadores = df_total.set_index("rut")["destinoAvion"].str.upper().to_dict()
-origen_trabajadores = df_total.set_index("rut")["origenAvion"].str.upper().to_dict()
-subida_trabajadores = df_total.set_index("rut")["subida"].astype(int).to_dict()
+# -------------------------
+# Cargar datos desde la DB
+# -------------------------
+df_trabajadores = pd.read_sql(f'''
+    SELECT TT.id AS trabajador_id, TT.subida, TT.origen, TT.destino, TT.acercamiento, T.rut
+    FROM "TrabajadorTurno" TT
+    JOIN "Trabajador" T ON TT."trabajadorId" = T.id
+    WHERE TT."turnoId" = '{turno_id}';
+''', engine)
 
-# BUSES
-buses = df_buses["id_bus"].tolist()
-CB_b = dict(zip(df_buses["id_bus"], df_buses["capacidad"]))
-HB_b = {
-    row.id_bus: int(row.horario_llegada.hour * 60 + row.horario_llegada.minute)
-    for _, row in df_buses.iterrows()
-}
-comunas_origen_bus = {
-    row.id_bus: json.loads(row.comunas_origen) for _, row in df_buses.iterrows()
-}
-comunas_destino_bus = {
-    row.id_bus: json.loads(row.comunas_destino) for _, row in df_buses.iterrows()
-}
+df_buses = pd.read_sql(f'''
+    SELECT BT.id AS bus_turno_id, B.*, BT."turnoId"
+    FROM "BusTurno" BT
+    JOIN "Bus" B ON BT."busId" = B."id"
+    WHERE BT."turnoId" = '{turno_id}';
+''', engine)
 
-# AVIONES
-vuelos = df_aviones["id_plane"].tolist()
-CV_v = dict(zip(df_aviones["id_plane"], df_aviones["capacidad"]))
-HV_v = {
-    row.id_plane: int((row.horario_salida if row.subida else row.horario_llegada).hour * 60 + (row.horario_salida if row.subida else row.horario_llegada).minute + (1440 if (row.horario_salida if row.subida else row.horario_llegada).hour < 5 else 0))
-    for _, row in df_aviones.iterrows()
-}
-origen_vuelos = dict(zip(df_aviones["id_plane"], df_aviones["ciudad_origen"].str.upper()))
-destino_vuelos = dict(zip(df_aviones["id_plane"], df_aviones["ciudad_destino"].str.upper()))
+df_planes = pd.read_sql(f'''
+    SELECT PT.id AS plane_turno_id, P.*, PT."turnoId"
+    FROM "PlaneTurno" PT
+    JOIN "Plane" P ON PT."planeId" = P."id"
+    WHERE PT."turnoId" = '{turno_id}';
+''', engine)
 
-# --- MODELO DE OPTIMIZACIÓN ---
+df_trabajadores["origen"] = df_trabajadores["origen"].apply(normalizar)
+df_trabajadores["destino"] = df_trabajadores["destino"].apply(normalizar)
+df_planes["ciudad_origen"] = df_planes["ciudad_origen"].apply(normalizar)
+df_planes["ciudad_destino"] = df_planes["ciudad_destino"].apply(normalizar)
+df_buses["comunas_origen"] = df_buses["comunas_origen"].apply(lambda x: [normalizar(c) for c in json.loads(x)])
+df_buses["comunas_destino"] = df_buses["comunas_destino"].apply(lambda x: [normalizar(c) for c in json.loads(x)])
+
+# -------------------------
+# Preprocesamiento
+# -------------------------
+trabajadores = df_trabajadores["trabajador_id"].tolist()
+comunas_trabajadores = df_trabajadores.set_index("trabajador_id")["acercamiento"].str.upper().to_dict()
+destino_trabajadores = df_trabajadores.set_index("trabajador_id")["destino"].str.upper().to_dict()
+origen_trabajadores = df_trabajadores.set_index("trabajador_id")["origen"].str.upper().to_dict()
+buses = df_buses["bus_turno_id"].tolist()
+vuelos = df_planes["plane_turno_id"].tolist()
+
+
+CB = df_buses.set_index("bus_turno_id")["capacidad"].to_dict()
+CV = df_planes.set_index("plane_turno_id")["capacidad"].to_dict()
+
+def hora_str_a_minutos(hora_str):
+    h, m = map(int, hora_str.split(":"))
+    return h * 60 + m
+
+HB = df_buses.set_index("bus_turno_id").apply(
+    lambda r: int(pd.to_datetime(r["horario_llegada"]).hour * 60 + pd.to_datetime(r["horario_llegada"]).minute), axis=1).to_dict()
+    
+HV = df_planes.set_index("plane_turno_id")["horario_salida"].apply(hora_str_a_minutos).to_dict()
+
+
+comunas_origen_bus = df_buses.set_index("bus_turno_id")["comunas_origen"].apply(
+    lambda x: x if isinstance(x, list) else json.loads(x)
+).to_dict()
+comunas_destino_bus = df_buses.set_index("bus_turno_id")["comunas_destino"].apply(
+    lambda x: x if isinstance(x, list) else json.loads(x)
+).to_dict()
+origen_planes = df_planes.set_index("plane_turno_id")["ciudad_origen"].str.upper().to_dict()
+destino_planes = df_planes.set_index("plane_turno_id")["ciudad_destino"].str.upper().to_dict()
+
+# -------------------------
+# Modelo OR-Tools
+# -------------------------
 model = cp_model.CpModel()
-bus_var = {}
-vuelo_var = {}
+x = {}
+y = {}
 
 for t in trabajadores:
     for b in buses:
-        bus_var[(t, b)] = model.NewBoolVar(f'bus_{t}_{b}')
+        x[(t, b)] = model.NewBoolVar(f'x_{t}_{b}')
     for v in vuelos:
-        vuelo_var[(t, v)] = model.NewBoolVar(f'vuelo_{t}_{v}')
+        y[(t, v)] = model.NewBoolVar(f'y_{t}_{v}')
 
-# Restricción: cada trabajador toma 1 bus y 1 vuelo
+# Restricción: 1 bus y 1 vuelo por trabajador
 for t in trabajadores:
-    model.Add(sum(bus_var[(t, b)] for b in buses) == 1)
-    model.Add(sum(vuelo_var[(t, v)] for v in vuelos) == 1)
+    model.Add(sum(x[(t, b)] for b in buses) == 1)
+    model.Add(sum(y[(t, v)] for v in vuelos) == 1)
 
-# Restricción: capacidades
+# Restricción: capacidad buses y vuelos
 for b in buses:
-    model.Add(sum(bus_var[(t, b)] for t in trabajadores) <= CB_b[b])
+    model.Add(sum(x[(t, b)] for t in trabajadores) <= CB[b])
 for v in vuelos:
-    model.Add(sum(vuelo_var[(t, v)] for t in trabajadores) <= CV_v[v])
+    model.Add(sum(y[(t, v)] for t in trabajadores) <= CV[v])
 
-# Restricciones adicionales
+# Restricción: compatibilidad de horario y rutas
 for t in trabajadores:
-    for b in buses:
-        if subida_trabajadores[t] == 1:
-            for v in vuelos:
-                if HB_b[b] + 180 > HV_v[v]:
-                    model.AddBoolOr([bus_var[(t, b)].Not(), vuelo_var[(t, v)].Not()])
+    fila = df_trabajadores[df_trabajadores["trabajador_id"] == t].iloc[0]
+    subida = fila["subida"]
 
     for b in buses:
-        if subida_trabajadores[t] == 1:
-            if comunas_trabajadores[t] not in comunas_origen_bus[b]:
-                model.Add(bus_var[(t, b)] == 0)
+        if subida:
+            if normalizar(comunas_trabajadores[t]) not in map(str.upper, comunas_origen_bus[b]):
+                model.Add(x[(t, b)] == 0)
         else:
-            if comunas_trabajadores[t] not in comunas_destino_bus[b]:
-                model.Add(bus_var[(t, b)] == 0)
+            if normalizar(comunas_trabajadores[t]) not in map(str.upper, comunas_destino_bus[b]):
+                model.Add(x[(t, b)] == 0)
 
     for v in vuelos:
-        if destino_vuelos[v] != destino_trabajadores[t] or origen_vuelos[v] != origen_trabajadores[t]:
-            model.Add(vuelo_var[(t, v)] == 0)
+        if normalizar(origen_planes[v]) != (normalizar(origen_trabajadores[t])):
+            model.Add(y[(t, v)] == 0)
+        if normalizar(destino_planes[v]) != (normalizar(destino_trabajadores[t])):
+            model.Add(y[(t, v)] == 0)
 
+    # Restricción de conexión temporal
+    """for b in buses:
+        for v in vuelos:
+            if subida:
+                if HB[b] + 180 > HV[v]:
+                    model.AddBoolOr([x[(t, b)].Not(), y[(t, v)].Not()])"""
+
+# -------------------------
+# Logs para depuración
+# -------------------------
+
+print("\n📋 Validando compatibilidad de rutas por trabajador:")
+incompatibles_bus = 0
+incompatibles_vuelo = 0
+
+for t in trabajadores:
+    subida = df_trabajadores[df_trabajadores["trabajador_id"] == t]["subida"].values[0]
+
+    buses_validos = [b for b in buses if normalizar(comunas_trabajadores[t]) in comunas_origen_bus[b]] if subida \
+                    else [b for b in buses if normalizar(comunas_trabajadores[t]) in comunas_destino_bus[b]]
+    vuelos_validos = [v for v in vuelos
+                      if normalizar(origen_planes[v]) == normalizar(origen_trabajadores[t])
+                      and normalizar(destino_planes[v]) == normalizar(destino_trabajadores[t])]
+
+    if len(buses_validos) == 0:
+        print(f"⚠️ Trabajador {t} sin buses compatibles ({'SUBIDA' if subida else 'BAJADA'})")
+        incompatibles_bus += 1
+    if len(vuelos_validos) == 0:
+        print(f"⚠️ Trabajador {t} sin vuelos compatibles")
+        incompatibles_vuelo += 1
+
+print(f"\n🚫 Trabajadores sin buses compatibles: {incompatibles_bus}")
+print(f"🚫 Trabajadores sin vuelos compatibles: {incompatibles_vuelo}")
+
+# Chequeo adicional: variables que sí fueron creadas
+print(f"\n📦 Variables x creadas: {len(x)}")
+print(f"📦 Variables y creadas: {len(y)}")
+
+
+# -------------------------
 # Función objetivo: minimizar espera
+# -------------------------
 espera_total = []
 for t in trabajadores:
     for b in buses:
         for v in vuelos:
-            diff = HV_v[v] - HB_b[b] if subida_trabajadores[t] == 1 else HB_b[b] - HV_v[v]
-            comb = model.NewBoolVar(f"emp_{t}_{b}_{v}")
-            model.AddBoolAnd([bus_var[(t, b)], vuelo_var[(t, v)]]).OnlyEnforceIf(comb)
-            model.AddBoolOr([bus_var[(t, b)].Not(), vuelo_var[(t, v)].Not()]).OnlyEnforceIf(comb.Not())
+            subida = df_trabajadores[df_trabajadores["trabajador_id"] == t]["subida"].values[0]
+            diff = HV[v] - HB[b] if subida else HB[b] - HV[v]
+            comb = model.NewBoolVar(f'c_{t}_{b}_{v}')
+            model.AddBoolAnd([x[(t, b)], y[(t, v)]]).OnlyEnforceIf(comb)
+            model.AddBoolOr([x[(t, b)].Not(), y[(t, v)].Not()]).OnlyEnforceIf(comb.Not())
             espera_total.append(diff * comb)
 
 model.Minimize(sum(espera_total))
 
-# SOLVER
+print("🔍 Total trabajadores:", len(trabajadores))
+print("🔍 Total buses:", len(buses))
+print("🔍 Total vuelos:", len(vuelos))
+print("🔍 Capacidad total buses:", sum(CB.values()))
+print("🔍 Capacidad total vuelos:", sum(CV.values()))
+
+
+
+# -------------------------
+# Resolver
+# -------------------------
 solver = cp_model.CpSolver()
+solver.parameters.max_time_in_seconds = 30
+# Tiempo límite y estadísticas iniciales
+print(f"\n🧠 Tiempo límite de resolución: {solver.parameters.max_time_in_seconds} segundos")
+print("📈 Comenzando resolución...")
 status = solver.Solve(model)
 
-# Guardar resultados
 if status in [cp_model.FEASIBLE, cp_model.OPTIMAL]:
-    print("Guardando asignaciones en base de datos...")
-    for t in trabajadores:
-        b_asig = next(b for b in buses if solver.Value(bus_var[(t, b)]) == 1)
-        v_asig = next(v for v in vuelos if solver.Value(vuelo_var[(t, v)]) == 1)
-
-        trayecto = 'ida' if subida_trabajadores[t] == 1 else 'vuelta'
-        fecha_actual = datetime.today()
-
-        cursor.execute('''
-            INSERT INTO "AssignmentBus" (
-                "id_assignment_bus", "workerRut", "busId", "fecha", "trayecto", "estado"
-            ) VALUES (%s, %s, %s, %s, %s, %s);
-        ''', (
-            str(uuid4()), t, b_asig, fecha_actual, trayecto, 'asignado'
-        ))
-
-        cursor.execute('''
-            INSERT INTO "AssignmentPlane" (
-                "id_assignment_plane", "workerRut", "planeId", "fecha", "trayecto", "estado"
-            ) VALUES (%s, %s, %s, %s, %s, %s);
-        ''', (
-            str(uuid4()), t, v_asig, fecha_actual, trayecto, 'asignado'
-        ))
-
-    conn.commit()
-    print("Asignaciones guardadas correctamente.")
+    print("✅ Solución encontrada. Valor objetivo:", solver.ObjectiveValue())
 else:
-    print("No se encontró una solución factible.")
+    print("❌ No se encontró solución.")
+    exit()
 
-print(f"Valor FO: {solver.ObjectiveValue():.2f}")
-print(f"Promedio por trabajador: {solver.ObjectiveValue() / len(trabajadores):.2f}")
+# Limpiar asignaciones anteriores del turno
+cursor.execute('''
+    DELETE FROM "AssignmentBus"
+    WHERE "busTurnoId" IN (
+        SELECT id FROM "BusTurno" WHERE "turnoId" = %s
+    )
+''', (turno_id,))
+
+cursor.execute('''
+    DELETE FROM "AssignmentPlane"
+    WHERE "planeTurnoId" IN (
+        SELECT id FROM "PlaneTurno" WHERE "turnoId" = %s
+    )
+''', (turno_id,))
+conn.commit()
+
+
+# Insertar asignaciones de bus
+for t in trabajadores:
+    for b in buses:
+        if solver.Value(x[(t, b)]):
+            cursor.execute('''
+                INSERT INTO "AssignmentBus" (id, "trabajadorTurnoId", "busTurnoId")
+                VALUES (%s, %s, %s)
+            ''', (str(uuid4()), t, b))
+
+# Insertar asignaciones de avión
+for t in trabajadores:
+    for v in vuelos:
+        if solver.Value(y[(t, v)]):
+            cursor.execute('''
+                INSERT INTO "AssignmentPlane" (id, "trabajadorTurnoId", "planeTurnoId")
+                VALUES (%s, %s, %s)
+            ''', (str(uuid4()), t, v))
+
+conn.commit()
+cursor.close()
+conn.close()
+print(f"✈️🚌 Asignaciones insertadas exitosamente para el turno {turno_id}")
+

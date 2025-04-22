@@ -1,4 +1,4 @@
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const fs = require('fs');
 
 const MANDATORY_COLUMNS = ['RUT', 'ACERCAMIENTO', 'DESTINO'];
@@ -31,7 +31,7 @@ const filterRequiredColumns = (data) => {
   });
 };
 
-const handleUpload = (req, res) => {
+const handleUpload = async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No se envió ningún archivo' });
   }
@@ -40,8 +40,9 @@ const handleUpload = (req, res) => {
   const selectedSheet = req.body.sheetName;
 
   try {
-    const workbook = XLSX.readFile(filePath);
-    const sheetNames = workbook.SheetNames;
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
+    const sheetNames = workbook.worksheets.map(sheet => sheet.name);
 
     if (!selectedSheet) {
       fs.unlinkSync(filePath);
@@ -51,21 +52,32 @@ const handleUpload = (req, res) => {
       });
     }
 
-    if (!sheetNames.includes(selectedSheet)) {
+    const worksheet = workbook.getWorksheet(selectedSheet);
+    if (!worksheet) {
       fs.unlinkSync(filePath);
       return res.status(400).json({ error: `La hoja "${selectedSheet}" no existe en el archivo` });
     }
 
-    const sheet = workbook.Sheets[selectedSheet];
-    const data = XLSX.utils.sheet_to_json(sheet);
+    const rows = [];
+    const headers = [];
+    worksheet.getRow(1).eachCell(cell => headers.push(cell.value));
 
-    const validation = validateExcelColumns(data);
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // Saltar encabezados
+      const rowData = {};
+      row.eachCell((cell, colNumber) => {
+        rowData[headers[colNumber - 1]] = cell.value;
+      });
+      rows.push(rowData);
+    });
+
+    const validation = validateExcelColumns(rows);
     if (!validation.isValid) {
       fs.unlinkSync(filePath);
       return res.status(400).json({ error: validation.error });
     }
 
-    const filteredData = filterRequiredColumns(data);
+    const filteredData = filterRequiredColumns(rows);
     fs.unlinkSync(filePath);
 
     return res.json({
