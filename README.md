@@ -92,6 +92,7 @@ ALTER USER mpmuser CREATEDB;
 ```bash
 npx prisma generate
 npx prisma db push
+npx prisma db seed
 ```
 
 > Solo necesitas ejecutar esto una vez si trabajas en base local.
