@@ -52,10 +52,18 @@ const deletePlane = async (req, res) => {
 
 const deleteAllPlanes = async (_req, res) => {
   try {
+    // First delete all related assignments
+    await prisma.assignmentPlane.deleteMany({});
+    
+    // Then delete all planes
     await prisma.plane.deleteMany({});
-    res.status(200).json({ message: "Todos los vuelos fueron eliminados correctamente." });
+    
+    return res.status(200).json({ message: "Todos los aviones y sus asignaciones fueron eliminados." });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Error al eliminar todos los aviones ->", error.message);
+    return res.status(500).json({ message: error.message });
+  } finally {
+    await prisma.$disconnect();
   }
 };
 
