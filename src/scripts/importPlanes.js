@@ -32,8 +32,8 @@ const importarPlanes = async () => {
         capacidad: Number(capacidad),
         horario_salida: String(horario_salida).trim(), // Ya está bien
         horario_llegada: String(horario_llegada).trim(),
-        ciudad_origen: String(ciudad_origen).trim().toUpperCase(),
-        ciudad_destino: String(ciudad_destino).trim().toUpperCase(),
+        ciudad_origen: String(ciudad_origen).trim(),
+        ciudad_destino: String(ciudad_destino).trim(),
       });
     });
 
