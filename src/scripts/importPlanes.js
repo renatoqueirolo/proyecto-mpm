@@ -1,5 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
-const xlsx = require('xlsx');
+const ExcelJS = require('exceljs');
 const path = require('path');
 const turnoId = process.argv[2]; 
 
@@ -16,43 +16,41 @@ const convertirHoraStringAHoy = (horaStr) => {
 
 const importarPlanes = async () => {
   try {
-    const archivo = xlsx.readFile(path.resolve(__dirname, '../../datos/vuelos_charter.xlsx'));
-    const hoja = archivo.SheetNames[0];
-    const data = xlsx.utils.sheet_to_json(archivo.Sheets[hoja]);
-
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(path.resolve(__dirname, '../../datos/vuelos_charter.xlsx'));
+    const worksheet = workbook.worksheets[0];
     let avionesInsertados = [];
 
-    for (const row of data) {
-      const {
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // Omitir encabezado
+      const [
         id,
         capacidad,
         horario_salida,
         horario_llegada,
         ciudad_origen,
         ciudad_destino
-      } = row;
-      console.log(row);
-      if (!id || !horario_salida || !horario_llegada) continue;
+      ] = row.values.slice(1); // Ignora el índice 0 que es null
 
-      const yaExiste = await prisma.plane.findUnique({ where: { id} });
-      if (yaExiste) continue;
+      if (!id || !horario_salida || !horario_llegada) return;
 
-      const nuevoAvion = await prisma.plane.create({
-        data: {
-          id,
-          capacidad,
-          horario_salida,
-          horario_llegada,
-          ciudad_origen,
-          ciudad_destino,
-        }
+      avionesInsertados.push({
+        id,
+        capacidad,
+        horario_salida,
+        horario_llegada,
+        ciudad_origen,
+        ciudad_destino,
       });
-      
+    });
 
-      avionesInsertados.push(nuevoAvion);
+    for (const avion of avionesInsertados) {
+      const yaExiste = await prisma.plane.findUnique({ where: { id: avion.id } });
+      if (!yaExiste) {
+        await prisma.plane.create({ data: avion });
+      }
     }
 
-    // Devolvemos los aviones importados como respuesta
     return avionesInsertados;
   } catch (error) {
     throw new Error("❌ Error al importar vuelos: " + error.message);

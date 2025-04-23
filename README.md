@@ -48,6 +48,9 @@ source venv/bin/activate
 
 # Instalar requerimientos
 pip install -r requirements.txt
+
+#En su defecto (si demora mucho) instalar las librerias de las siguiente forma
+pip install ortools pandas numpy psycopg2-binary python-dotenv openpyxl SQLAlchemy
 ```
 
 ---
@@ -89,6 +92,7 @@ ALTER USER mpmuser CREATEDB;
 ```bash
 npx prisma generate
 npx prisma db push
+npx prisma db seed
 ```
 
 > Solo necesitas ejecutar esto una vez si trabajas en base local.
