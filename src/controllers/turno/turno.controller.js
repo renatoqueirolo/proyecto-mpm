@@ -73,6 +73,53 @@ async function obtenerTurno(req, res) {
   }
 }
 
+async function obtenerTrabajadoresTurno(req, res) {
+  try {
+    const { id } = req.params;
+    const trabajadoresTurno = await prisma.trabajadorTurno.findMany({
+      where: { turnoId: id },
+      include: {
+        trabajador: true, // Incluye datos del trabajador
+      },
+    });
+
+    res.json(trabajadoresTurno);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener trabajadores del turno' });
+  }
+}
+
+async function obtenerAvionesTurno(req, res) {
+  try {
+    const { id } = req.params;
+    const avionesTurno = await prisma.planeTurno.findMany({
+      where: { turnoId: id },
+      include: {
+        plane: true, // Incluye datos del avión
+      },
+    });
+
+    res.json(avionesTurno);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener aviones del turno' });
+  }
+}
+
+async function obtenerBusesTurno(req, res) {
+  try {
+    const { id } = req.params;
+    const busesTurno = await prisma.busTurno.findMany({
+      where: { turnoId: id },
+      // Puedes incluir más detalles si tu modelo lo permite
+    });
+
+    res.json(busesTurno);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener buses del turno' });
+  }
+}
+
+
 // Editar fecha turno
 async function editarFechaTurno(req, res) {
   try {
@@ -465,6 +512,9 @@ module.exports = {
   crearTurno,
   obtenerTurnos,
   obtenerTurno,
+  obtenerTrabajadoresTurno,
+  obtenerAvionesTurno,
+  obtenerBusesTurno,
   editarFechaTurno,
   eliminarTurno,
   importarTrabajadoresAlTurno,
