@@ -34,3 +34,11 @@ coverage/
 
 venv/
 
+# Python
+__pycache__/
+*.pyc
+
+# Output scraper    
+src/scripts/scraper/output/
+
+
