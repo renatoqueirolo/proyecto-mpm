@@ -109,8 +109,8 @@ model PlaneTurno {
   planeId   String
   turnoId   String
   capacidad Int
-  horario_salida String
-  horario_llegada String
+  horario_salida DateTime
+  horario_llegada DateTime
 
   plane     Plane    @relation(fields: [planeId], references: [id], onDelete: Cascade)
   turno     Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)

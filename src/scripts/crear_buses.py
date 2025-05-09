@@ -91,6 +91,16 @@ comunas_destino_bus = {**{b: ["SANTIAGO"] for b in buses_subida}, **{b: v for b,
 CB_b = {bus: CAPACIDAD_BUS for bus in buses}
 HB_b = {bus: 870 if "subida" in bus else 2000 for bus in buses}
 
+# Obtener la fecha real del turno desde la tabla "Turno"
+cursor.execute('SELECT "fecha" FROM "Turno" WHERE "id" = %s', (turno_id,))
+row = cursor.fetchone()
+
+if not row:
+    print(f"No se encontró el turno con ID {turno_id}")
+    exit()
+
+fecha_turno = row[0]  # Este es un datetime.date o datetime.datetime
+
 for bus_id in buses:
     subida = "subida" in bus_id
     comunas_origen = comunas_origen_bus[bus_id]
@@ -109,8 +119,8 @@ for bus_id in buses:
         ''', (
             bus_id,
             CAPACIDAD_BUS,
-            datetime.combine(datetime.today(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id]),
-            datetime.combine(datetime.today(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id] + 60),
+            datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id]),
+            datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id] + 60),
             json.dumps(comunas_origen),
             json.dumps(comunas_destino)
         ))
@@ -128,8 +138,8 @@ for bus_id in buses:
             turno_id,
             bus_id,
             CAPACIDAD_BUS,
-            datetime.combine(datetime.today(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id]),
-            datetime.combine(datetime.today(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id] + 60)
+            datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id]),
+            datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id] + 60)
         ))
 
 
