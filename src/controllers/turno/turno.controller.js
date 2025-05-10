@@ -19,6 +19,8 @@ async function crearTurno(req, res) {
         modeloEjecutado: false,
       },
     });
+    
+    console.log("📅 Turno creado con fecha:", turno.fecha.toISOString());
     res.status(201).json(turno);
   } catch (error) {
     console.error('Error al crear turno:', error);
@@ -209,30 +211,43 @@ const asignarAvionesATurno = async (req, res) => {
       return res.status(400).json({ error: 'Debe enviar un arreglo de aviones' });
     }
 
-    // Validar turno
-    const turnoExiste = await prisma.turno.findUnique({ where: { id: turnoId } });
-    if (!turnoExiste) {
+    // Obtener fecha del turno
+    const turno = await prisma.turno.findUnique({
+      where: { id: turnoId },
+      select: { fecha: true },
+    });
+
+    if (!turno) {
       return res.status(404).json({ error: 'Turno no encontrado' });
     }
 
-    const avionesIDs = aviones.map(avion => avion.planeId);
+    const fechaTurno = new Date(turno.fecha);
 
     // Validar existencia de los aviones
+    const avionesIDs = aviones.map(avion => avion.planeId);
     const planesExistentes = await prisma.plane.findMany({
       where: { id: { in: avionesIDs } },
-      select: { id: true }
+      select: {
+        id: true,
+        capacidad: true,
+        horario_salida: true,
+        horario_llegada: true,
+      }
     });
 
-    const existentesIds = new Set(planesExistentes.map(p => p.id));
-    const faltantes = aviones.filter(avion => !existentesIds.has(avion.planeId));
+    const mapaPlanes = new Map();
+    for (const plane of planesExistentes) {
+      mapaPlanes.set(plane.id, plane);
+    }
 
+    const faltantes = aviones.filter(avion => !mapaPlanes.has(avion.planeId));
     if (faltantes.length > 0) {
       return res.status(400).json({
         error: `Los siguientes aviones no existen: ${faltantes.map(a => a.planeId).join(', ')}`
       });
     }
 
-    // Evitar duplicados
+    // Evitar duplicados en planeTurno
     const existentesEnTurno = await prisma.planeTurno.findMany({
       where: { turnoId, planeId: { in: avionesIDs } },
       select: { planeId: true }
@@ -241,17 +256,32 @@ const asignarAvionesATurno = async (req, res) => {
 
     const nuevosAviones = aviones.filter(avion => !yaAsignados.has(avion.planeId));
 
-    const inserts = nuevosAviones.map(avion =>
-      prisma.planeTurno.create({
+    // Función para combinar fecha del turno y hora tipo "18:30"
+    const construirFechaHora = (fechaBase, horaStr) => {
+      const [hh, mm] = horaStr.split(":").map(Number);
+      const minutosTotales = hh * 60 + mm;
+      const sumarDia = minutosTotales < 780; // antes de las 13:00
+      const fechaBaseAjustada = new Date(fechaBase);
+      if (sumarDia) fechaBaseAjustada.setDate(fechaBaseAjustada.getDate() + 1);
+      fechaBaseAjustada.setHours(hh+20, mm, 0, 0);
+      return fechaBaseAjustada;
+    };
+
+    const inserts = nuevosAviones.map(avion => {
+      const plane = mapaPlanes.get(avion.planeId);
+      const salidaDT = construirFechaHora(fechaTurno, plane.horario_salida);
+      const llegadaDT = construirFechaHora(fechaTurno, plane.horario_llegada);
+
+      return prisma.planeTurno.create({
         data: {
           planeId: avion.planeId,
           turnoId,
-          capacidad: avion.capacidad,
-          horario_salida: avion.horario_salida,
-          horario_llegada: avion.horario_llegada,
+          capacidad: plane.capacidad,
+          horario_salida: salidaDT,
+          horario_llegada: llegadaDT,
         }
-      })
-    );
+      });
+    });
 
     const resultados = await Promise.all(inserts);
     res.status(201).json({ message: 'Aviones asignados al turno', asignados: resultados });
@@ -260,7 +290,6 @@ const asignarAvionesATurno = async (req, res) => {
     res.status(500).json({ error: 'Error interno al asignar aviones al turno' });
   }
 };
-
 
 
 
