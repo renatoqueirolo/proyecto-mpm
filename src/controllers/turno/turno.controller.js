@@ -361,6 +361,7 @@ async function optimizarTurno(req, res) {
 async function obtenerAsignacionesDeTurno(req, res) {
   try {
     const { id } = req.params;
+
     const buses = await prisma.assignmentBus.findMany({
       where: {
         busTurno: {
@@ -368,20 +369,15 @@ async function obtenerAsignacionesDeTurno(req, res) {
         }
       },
       include: {
-        busTurno: {
-          include: {
-            bus: true
-          }
-        },
+        busTurno: true,
         trabajadorTurno: {
           include: {
             trabajador: true
           }
         }
-        
       }
     });
-    
+
     const vuelos = await prisma.assignmentPlane.findMany({
       where: {
         planeTurno: {
@@ -401,13 +397,14 @@ async function obtenerAsignacionesDeTurno(req, res) {
         }
       }
     });
-    
 
     res.json({ buses, vuelos });
   } catch (error) {
+    console.error("Error al obtener asignaciones:", error);
     res.status(500).json({ error: 'Error al obtener asignaciones' });
   }
 }
+
 
 // Ver historial de asignaciones del turno
 async function obtenerHistorialDeTurno(req, res) {
@@ -445,11 +442,7 @@ async function exportarAsignaciones(req, res) {
             plane: true,
           },
         },
-        busTurno: {
-          include: {
-            bus: true,
-          },
-        },
+        busTurno: true,
       },
     });
 

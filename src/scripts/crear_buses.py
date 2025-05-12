@@ -106,18 +106,19 @@ for bus_id in buses:
     comunas_origen = comunas_origen_bus[bus_id]
     comunas_destino = comunas_destino_bus[bus_id]
 
+
     # Verificar si el bus ya existe
-    cursor.execute('SELECT COUNT(*) FROM "Bus" WHERE "id" = %s', (bus_id,))
+    cursor.execute('SELECT COUNT(*) FROM "BusTurno" WHERE "id" = %s', (bus_id,))
     existe = cursor.fetchone()[0]
 
     if not existe:
         cursor.execute('''
-            INSERT INTO "Bus" (
-                "id", "capacidad", "horario_salida", "horario_llegada",
-                "comunas_origen", "comunas_destino"
-            ) VALUES (%s, %s, %s, %s, %s, %s);
+            INSERT INTO "BusTurno" (
+                id, "turnoId", "capacidad", "horario_salida", "horario_llegada", "comunas_origen", "comunas_destino"
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
         ''', (
             bus_id,
+            turno_id,
             CAPACIDAD_BUS,
             datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id]),
             datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id] + 60),
@@ -125,22 +126,6 @@ for bus_id in buses:
             json.dumps(comunas_destino)
         ))
 
-    cursor.execute('SELECT COUNT(*) FROM "BusTurno" WHERE "busId" = %s AND "turnoId" = %s', (bus_id, turno_id))
-    existe = cursor.fetchone()[0]
-    # Paso 2: Insertar en BusTurno
-    if not existe:
-        cursor.execute('''
-            INSERT INTO "BusTurno" (
-                id, "turnoId", "busId", "capacidad", "horario_salida", "horario_llegada"
-            ) VALUES (%s, %s, %s, %s, %s, %s)
-        ''', (
-            str(uuid4()),
-            turno_id,
-            bus_id,
-            CAPACIDAD_BUS,
-            datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id]),
-            datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id] + 60)
-        ))
 
 
 conn.commit()

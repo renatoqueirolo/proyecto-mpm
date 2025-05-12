@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const {
-  getBuses,
-  createBus,
-  updateBus,
-  deleteBus,
-  deleteAllBuses,
-} = require('../../../controllers/opt-model/bus/bus.controller');
+  getBusTurnos,
+  createBusTurno,
+  updateBusTurno,
+  deleteBusTurno,
+  deleteAllBusTurnos,
+} = require('../../../controllers/opt-model/bus/busTurno.controller');
+
 
 /**
  * @swagger
@@ -21,7 +22,7 @@ const {
  *       500:
  *         description: Error al obtener los buses
  */
-router.get('/', getBuses);
+router.get('/', getBusTurnos);
 
 /**
  * @swagger
@@ -36,7 +37,7 @@ router.get('/', getBuses);
  *       500:
  *         description: Error al crear el bus
  */
-router.post('/', createBus);
+router.post('/', createBusTurno);
 
 /**
  * @swagger
@@ -51,7 +52,7 @@ router.post('/', createBus);
  *       500:
  *         description: Error al actualizar el bus
  */
-router.put('/:id', updateBus);
+router.put('/:id', updateBusTurno);
 
 /**
  * @swagger
@@ -66,7 +67,7 @@ router.put('/:id', updateBus);
  *       500:
  *         description: Error al eliminar el bus
  */
-router.delete('/:id', deleteBus);
+router.delete('/:id', deleteBusTurno);
 
 /**
  * @swagger
@@ -81,7 +82,7 @@ router.delete('/:id', deleteBus);
  *       500:
  *         description: Error al eliminar los buses
  */
-router.delete('/', deleteAllBuses);
+router.delete('/', deleteAllBusTurnos);
 
 
 module.exports = router;

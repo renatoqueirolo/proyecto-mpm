@@ -231,10 +231,9 @@ df_trabajadores = pd.read_sql(f'''
 ''', engine)
 
 df_buses = pd.read_sql(f'''
-    SELECT BT.id AS bus_turno_id, B.*, BT."turnoId"
-    FROM "BusTurno" BT
-    JOIN "Bus" B ON BT."busId" = B."id"
-    WHERE BT."turnoId" = '{turno_id}';
+    SELECT *
+    FROM "BusTurno"
+    WHERE "turnoId" = '{turno_id}';
 ''', engine)
 
 df_planes = pd.read_sql(f'''
@@ -258,27 +257,27 @@ trabajadores = df_trabajadores["trabajador_id"].tolist()
 comunas_trabajadores = df_trabajadores.set_index("trabajador_id")["acercamiento"].str.upper().to_dict()
 destino_trabajadores = df_trabajadores.set_index("trabajador_id")["destino"].str.upper().to_dict()
 origen_trabajadores = df_trabajadores.set_index("trabajador_id")["origen"].str.upper().to_dict()
-buses = df_buses["bus_turno_id"].tolist()
+buses = df_buses["id"].tolist()
 vuelos = df_planes["plane_turno_id"].tolist()
 
 
-CB = df_buses.set_index("bus_turno_id")["capacidad"].to_dict()
+CB = df_buses.set_index("id")["capacidad"].to_dict()
 CV = df_planes.set_index("plane_turno_id")["capacidad"].to_dict()
 
 def hora_str_a_minutos(hora_str):
     h, m = map(int, hora_str.split(":"))
     return h * 60 + m
 
-HB = df_buses.set_index("bus_turno_id").apply(
+HB = df_buses.set_index("id").apply(
     lambda r: int(pd.to_datetime(r["horario_llegada"]).hour * 60 + pd.to_datetime(r["horario_llegada"]).minute), axis=1).to_dict()
     
 HV = df_planes.set_index("plane_turno_id")["horario_salida"].apply(hora_str_a_minutos).to_dict()
 
 
-comunas_origen_bus = df_buses.set_index("bus_turno_id")["comunas_origen"].apply(
+comunas_origen_bus = df_buses.set_index("id")["comunas_origen"].apply(
     lambda x: x if isinstance(x, list) else json.loads(x)
 ).to_dict()
-comunas_destino_bus = df_buses.set_index("bus_turno_id")["comunas_destino"].apply(
+comunas_destino_bus = df_buses.set_index("id")["comunas_destino"].apply(
     lambda x: x if isinstance(x, list) else json.loads(x)
 ).to_dict()
 origen_planes = df_planes.set_index("plane_turno_id")["ciudad_origen"].str.upper().to_dict()

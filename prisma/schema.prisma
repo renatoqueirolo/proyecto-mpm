@@ -67,27 +67,17 @@ model TrabajadorTurno {
   assignmentPlanes  AssignmentPlane[]
 }
 
-model Bus {
-  id        String           @id @default(cuid())
-  capacidad     Int
-  comunas_origen String          // JSON string
-  comunas_destino String         // JSON string
-  horario_salida DateTime
-  horario_llegada DateTime
-
-  busTurno BusTurno[]
-}
 
 model BusTurno {
   id              String   @id @default(cuid())
   turnoId         String
-  busId           String
   capacidad       Int
   horario_salida  DateTime
   horario_llegada DateTime
+  comunas_origen String      
+  comunas_destino String     
 
   turno           Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
-  bus             Bus      @relation(fields: [busId], references: [id], onDelete: Cascade)
 
   assignmentBuses AssignmentBus[]
 }
