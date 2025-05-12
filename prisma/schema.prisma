@@ -58,6 +58,7 @@ model TrabajadorTurno {
   acercamiento  String
   origen        String
   destino       String
+  region        String
   subida        Boolean
 
   trabajador    Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)

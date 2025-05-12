@@ -187,6 +187,7 @@ async function importarTrabajadoresAlTurno(req, res) {
           turnoId: id,
           trabajadorId: trabajador.id,
           acercamiento: t.acercamiento,
+          region: t.region,
           subida: t.subida,
           origen: t.origen,
           destino: t.destino,
@@ -501,6 +502,7 @@ async function exportarAsignaciones(req, res) {
 
       const subida = tt.subida;
       const acercamiento = tt.acercamiento ?? '';
+      const region = tt.region ?? '';
       const origen = subida ? acercamiento : tt.origen;
       const destino = subida ? tt.destino : acercamiento;
 
@@ -510,6 +512,7 @@ async function exportarAsignaciones(req, res) {
         subida: subida ? 'Subida' : 'Bajada',
         origen,
         destino,
+        region,
         salida_bus: bus ? getHora(bus.horario_salida) : '',
         llegada_bus: bus ? getHora(bus.horario_llegada) : '',
         salida_vuelo: vuelo ? vuelo.horario_salida : '',
