@@ -78,8 +78,9 @@ def asignar_buses(df_filtrado, capacidad_bus, cantidad_maxima, nombre="SUBIDA"):
     comunas_por_bus = {bus_ids[i]: allocations[i] for i in range(len(bus_ids))}
     return comunas_por_bus, bus_ids, allocations
 
-df_subida = df_tt[df_tt["subida"] == True]
-df_bajada = df_tt[df_tt["subida"] == False]
+# Excluir comuna no deseada en buses
+df_subida = df_tt[(df_tt["subida"] == True) & (df_tt["acercamiento"].str.upper() != "AEROPUERTO SANTIAGO")]
+df_bajada = df_tt[(df_tt["subida"] == False) & (df_tt["acercamiento"].str.upper() != "AEROPUERTO SANTIAGO")]
 
 comunas_por_bus_subida, buses_subida, _ = asignar_buses(df_subida, CAPACIDAD_BUS, CANTIDAD_BUSES_SUBIDA, "SUBIDA")
 comunas_por_bus_bajada, buses_bajada, _ = asignar_buses(df_bajada, CAPACIDAD_BUS, CANTIDAD_BUSES_BAJADA, "BAJADA")
