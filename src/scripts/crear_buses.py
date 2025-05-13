@@ -11,11 +11,11 @@ from sqlalchemy import create_engine
 import json
 import argparse
 
+# Configuración inicial
 parser = argparse.ArgumentParser()
 parser.add_argument("--turnoId", required=True, help="ID del turno a procesar")
 args = parser.parse_args()
 turno_id = args.turnoId
-
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
@@ -36,98 +36,200 @@ if df_tt.empty:
     print(f"No hay trabajadores para el turno {turno_id}")
     exit()
 
-CANTIDAD_BUSES_SUBIDA = 5
-CANTIDAD_BUSES_BAJADA = 5
-CAPACIDAD_BUS = 51
 THRESHOLD_DISTANCE = 40
+
+# Mapear comunas a regiones
+comuna_a_region = {
+    "VIÑA DEL MAR": "V",
+    "SAN ANTONIO": "IV",
+    "LA CALERA": "V",
+    "SANTIAGO": "RM",
+    "LOS ANDES": "V",
+    # Agrega más comunas según sea necesario
+}
+
+# Capacidades por región
+capacidades_por_region = {
+    "V": [12, 20, 10],
+    "IV": [16, 8],
+    "RM": [20, 30],
+}
 
 def obtener_distancia(comuna1, comuna2):
     distancias = {
         ("LA CALERA", "VIÑA DEL MAR"): 15,
         ("LA CALERA", "SAN ANTONIO"): 50,
         ("VIÑA DEL MAR", "SAN ANTONIO"): 35,
+        ("VIÑA DEL MAR", "LOS ANDES"): 130,
+        ("SAN ANTONIO", "LOS ANDES"): 145,
+        ("LA CALERA", "LOS ANDES"): 120,
     }
     if comuna1 == comuna2:
         return 0
     return distancias.get((comuna1, comuna2)) or distancias.get((comuna2, comuna1)) or 1000
 
-def asignar_buses(df_filtrado, capacidad_bus, cantidad_maxima, nombre="SUBIDA"):
-    conteo = Counter(df_filtrado["acercamiento"].str.upper())
-    full_alloc, remainders = [], {}
-    for comuna, cantidad in conteo.items():
-        full_alloc += [[comuna]] * (cantidad // capacidad_bus)
-        if cantidad % capacidad_bus > 0:
-            remainders[comuna] = cantidad % capacidad_bus
+def asignar_buses_por_comuna(df_filtrado, nombre="SUBIDA"):
+    from collections import defaultdict
 
-    paired_alloc, usado = [], [False]*len(remainders)
-    remainders_list = list(remainders.items())
-    for i, (comuna_i, cant_i) in enumerate(remainders_list):
-        if usado[i]: continue
-        allocation = [comuna_i]
-        usado[i] = True
-        for j in range(i+1, len(remainders_list)):
-            comuna_j, cant_j = remainders_list[j]
-            if not usado[j] and cant_i + cant_j <= capacidad_bus and obtener_distancia(comuna_i, comuna_j) <= THRESHOLD_DISTANCE:
-                allocation.append(comuna_j)
-                usado[j] = True
-                break
-        paired_alloc.append(allocation)
+    # 1. Asignar regiones a las comunas y contar los trabajadores por comuna
+    df_filtrado['region'] = df_filtrado['acercamiento'].map(comuna_a_region)
+    trabajadores_por_comuna = df_filtrado['acercamiento'].value_counts().to_dict()
 
-    allocations = full_alloc + paired_alloc
-    bus_ids = [f"{nombre.lower()}_bus{i+1}" for i in range(min(len(allocations), cantidad_maxima))]
-    comunas_por_bus = {bus_ids[i]: allocations[i] for i in range(len(bus_ids))}
-    return comunas_por_bus, bus_ids, allocations
+    # 2. Organizar comunas por región
+    comunas_por_region = defaultdict(list)
+    for comuna in trabajadores_por_comuna:
+        region = comuna_a_region.get(comuna)
+        if region:
+            comunas_por_region[region].append(comuna)
 
-# Excluir comuna no deseada en buses
-df_subida = df_tt[(df_tt["subida"] == True) & (df_tt["acercamiento"].str.upper() != "AEROPUERTO SANTIAGO")]
-df_bajada = df_tt[(df_tt["subida"] == False) & (df_tt["acercamiento"].str.upper() != "AEROPUERTO SANTIAGO")]
+    bus_info = []
+    bus_counter = 1
+    remanentes = {}
 
-comunas_por_bus_subida, buses_subida, _ = asignar_buses(df_subida, CAPACIDAD_BUS, CANTIDAD_BUSES_SUBIDA, "SUBIDA")
-comunas_por_bus_bajada, buses_bajada, _ = asignar_buses(df_bajada, CAPACIDAD_BUS, CANTIDAD_BUSES_BAJADA, "BAJADA")
+    # 3. Fase uno: asignar buses con un solo destino
+    for comuna, cantidad in trabajadores_por_comuna.items():
+        region = comuna_a_region.get(comuna)
+        if not region:
+            continue
 
-buses = buses_subida + buses_bajada
-comunas_origen_bus = {**{b: v for b, v in comunas_por_bus_subida.items()}, **{b: ["SANTIAGO"] for b in buses_bajada}}
-comunas_destino_bus = {**{b: ["SANTIAGO"] for b in buses_subida}, **{b: v for b, v in comunas_por_bus_bajada.items()}}
+        capacidades = sorted(capacidades_por_region.get(region, []), reverse=True)
 
-CB_b = {bus: CAPACIDAD_BUS for bus in buses}
-HB_b = {bus: 870 if "subida" in bus else 2000 for bus in buses}
+        for cap in capacidades:
+            while cantidad >= cap:
+                bus_info.append({
+                    "id": f"{nombre.lower()}_bus{bus_counter}",
+                    "region": region,
+                    "capacidad": cap,
+                    "comunas": [comuna],
+                    "subida": nombre == "SUBIDA"
+                })
+                bus_counter += 1
+                cantidad -= cap
 
-# Obtener la fecha real del turno desde la tabla "Turno"
-cursor.execute('SELECT "fecha" FROM "Turno" WHERE "id" = %s', (turno_id,))
-row = cursor.fetchone()
+        if cantidad > 0:
+            remanentes[comuna] = {"region": region, "cantidad": cantidad}
 
-if not row:
-    print(f"No se encontró el turno con ID {turno_id}")
-    exit()
+    # 4. Fase dos: agrupar remanentes cercanos dentro de su región
+    usados = set()
+    for region, comunas in comunas_por_region.items():
+        capacidades = sorted(capacidades_por_region.get(region, []), reverse=True)
 
-fecha_turno = row[0]  # Este es un datetime.date o datetime.datetime
+        # Filtrar comunas con remanentes en esta región
+        comunas_region_rem = [c for c in comunas if c in remanentes and (region, c) not in usados]
 
-for bus_id in buses:
-    subida = "subida" in bus_id
-    comunas_origen = comunas_origen_bus[bus_id]
-    comunas_destino = comunas_destino_bus[bus_id]
+        while comunas_region_rem:
+            base = comunas_region_rem[0]
+            grupo = [(base, remanentes[base]["cantidad"])]
+            usados.add((region, base))
+
+            # Buscar comunas cercanas dentro del threshold
+            for other in comunas_region_rem[1:]:
+                if (region, other) in usados:
+                    continue
+                if obtener_distancia(base, other) <= THRESHOLD_DISTANCE:
+                    grupo.append((other, remanentes[other]["cantidad"]))
+                    usados.add((region, other))
+
+            # Intentar llenar buses con el grupo
+            total = sum(cant for _, cant in grupo)
+            asignado = False
+            for cap in capacidades:
+                if total >= cap:
+                    restantes = cap
+                    comunas_en_bus = []
+                    for i in range(len(grupo)):
+                        comuna_i, cant_i = grupo[i]
+                        if cant_i > 0 and restantes > 0:
+                            tomar = min(restantes, cant_i)
+                            if comuna_i not in comunas_en_bus:
+                                comunas_en_bus.append(comuna_i)
+                            grupo[i] = (comuna_i, cant_i - tomar)
+                            restantes -= tomar
+                    bus_info.append({
+                        "id": f"{nombre.lower()}_bus{bus_counter}",
+                        "region": region,
+                        "capacidad": cap,
+                        "comunas": comunas_en_bus,
+                        "subida": nombre == "SUBIDA"
+                    })
+                    bus_counter += 1
+                    asignado = True
+                    break
+
+            # Si no se asignó ningún bus, usar la capacidad mínima posible con todas las comunas remanentes
+            if not asignado and total > 0:
+                comunas_en_bus = [comuna for comuna, cant in grupo if cant > 0]
+                bus_info.append({
+                    "id": f"{nombre.lower()}_bus{bus_counter}",
+                    "region": region,
+                    "capacidad": min(capacidades),
+                    "comunas": comunas_en_bus,
+                    "subida": nombre == "SUBIDA"
+                })
+                bus_counter += 1
+
+            # Quitar comunas ya usadas
+            comunas_region_rem = [c for c in comunas_region_rem if (region, c) not in usados]
+
+    return bus_info
 
 
-    # Verificar si el bus ya existe
-    cursor.execute('SELECT COUNT(*) FROM "BusTurno" WHERE "id" = %s', (bus_id,))
-    existe = cursor.fetchone()[0]
 
-    if not existe:
+
+# Separar trabajadores por sentido
+df_subida = df_tt[df_tt["subida"] == True].copy()
+df_bajada = df_tt[df_tt["subida"] == False].copy()
+
+# Asignar buses
+buses_subida = asignar_buses_por_comuna(df_subida, "SUBIDA")
+buses_bajada = asignar_buses_por_comuna(df_bajada, "BAJADA")
+
+todos_los_buses = buses_subida + buses_bajada
+
+for bus in todos_los_buses:
+    print(bus)
+    bus_id = bus["id"]
+    capacidad = bus["capacidad"]
+    subida = bus["subida"]
+    comunas_origen = bus["comunas"] if subida else ["SANTIAGO"]
+    comunas_destino = ["SANTIAGO"] if subida else bus["comunas"]
+
+    hora_base = 870 if subida else 2000
+    hora_salida = datetime.combine(datetime.today(), datetime.min.time()) + timedelta(minutes=hora_base)
+    hora_llegada = hora_salida + timedelta(minutes=60)
+
+    # Insertar en tabla Bus
+    cursor.execute('SELECT COUNT(*) FROM "Bus" WHERE "id" = %s', (bus_id,))
+    if cursor.fetchone()[0] == 0:
         cursor.execute('''
-            INSERT INTO "BusTurno" (
-                id, "turnoId", "capacidad", "horario_salida", "horario_llegada", "comunas_origen", "comunas_destino"
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO "Bus" (
+                "id", "capacidad", "horario_salida", "horario_llegada", 
+                "comunas_origen", "comunas_destino"
+            ) VALUES (%s, %s, %s, %s, %s, %s);
         ''', (
             bus_id,
-            turno_id,
-            CAPACIDAD_BUS,
-            datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id]),
-            datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=HB_b[bus_id] + 60),
+            capacidad,
+            hora_salida,
+            hora_llegada,
             json.dumps(comunas_origen),
             json.dumps(comunas_destino)
         ))
 
-
+    # Insertar en tabla BusTurno
+    cursor.execute('SELECT COUNT(*) FROM "BusTurno" WHERE "busId" = %s AND "turnoId" = %s', (bus_id, turno_id))
+    if cursor.fetchone()[0] == 0:
+        cursor.execute('''
+            INSERT INTO "BusTurno" (
+                id, "turnoId", "busId", "capacidad", "horario_salida", "horario_llegada"
+            ) VALUES (%s, %s, %s, %s, %s, %s)
+        ''', (
+            str(uuid4()),
+            turno_id,
+            bus_id,
+            capacidad,
+            hora_salida,
+            hora_llegada
+        ))
 
 conn.commit()
 print(f"Buses creados exitosamente para el turno {turno_id}.")
