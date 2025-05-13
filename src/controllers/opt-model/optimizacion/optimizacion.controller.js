@@ -18,7 +18,7 @@ async function runFullOptimizacion(req, res) {
     }
 
     // Delete existing buses before creating new ones
-    await prisma.bus.deleteMany();
+    await prisma.busTurno.deleteMany();
     console.log('Buses anteriores eliminados.');
 
     // Create buses
@@ -36,7 +36,7 @@ async function runFullOptimizacion(req, res) {
     });
 
     // Check if buses were created
-    const buses = await prisma.bus.findMany();
+    const buses = await prisma.busTurno.findMany();
     if (buses.length === 0) {
       return res.status(400).json({ error: 'No se pudieron crear los buses. Verifique los datos de entrada.' });
     }

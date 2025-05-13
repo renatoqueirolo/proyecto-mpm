@@ -5,6 +5,9 @@ const {
   crearTurno,
   obtenerTurnos,
   obtenerTurno,
+  obtenerTrabajadoresTurno,
+  obtenerBusesTurno,
+  obtenerAvionesTurno,
   editarFechaTurno,
   eliminarTurno,
   importarTrabajadoresAlTurno,
@@ -83,6 +86,9 @@ router.get('/', obtenerTurnos);
  *         description: No encontrado
  */
 router.get('/:id', obtenerTurno);
+router.get('/:id/trabajadores', obtenerTrabajadoresTurno);
+router.get('/:id/aviones', obtenerAvionesTurno);
+router.get('/:id/buses', obtenerBusesTurno);
 
 router.put('/:id', editarFechaTurno);
 

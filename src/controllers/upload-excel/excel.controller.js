@@ -1,7 +1,7 @@
 const ExcelJS = require('exceljs');
 const fs = require('fs');
 
-const MANDATORY_COLUMNS = ['RUT', 'ACERCAMIENTO', 'DESTINO'];
+const MANDATORY_COLUMNS = ['RUT', 'ACERCAMIENTO', 'REGIÓN', 'DESTINO'];
 
 const validateExcelColumns = (data) => {
   if (data.length === 0) {

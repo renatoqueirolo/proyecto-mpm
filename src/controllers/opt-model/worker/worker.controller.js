@@ -155,7 +155,7 @@ const importarDesdeExcel = async (req, res) => {
 
       const nombreCompleto = row['NOMBRE COMPLETO'];
       const telefono = row['TELÉFONO']?.toString();
-      const region = row['REGIÓN'];
+      const region = row['REGIÓN']?.toUpperCase().trim();
       const comuna = row['COMUNA / RESIDENCIA'];
       const acercamiento = row['ACERCAMIENTO']?.toUpperCase().trim();
       const [origenAvion, destinoAvion] = row['ORIGEN / DESTINO']?.split('/')?.map(s => s.trim()) || [null, null];
