@@ -101,7 +101,9 @@ npx prisma db seed
 
 ### 6. Corre el servidor
 
+
 ```bash
+source venv/bin/activate
 npm run dev
 ```
 
