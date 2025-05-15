@@ -35,8 +35,6 @@ if df_tt.empty:
     print(f"No hay trabajadores para el turno {turno_id}")
     exit()
 
-CANTIDAD_BUSES_SUBIDA = 5
-CANTIDAD_BUSES_BAJADA = 5
 # Capacidades por región (puedes modificar según demanda real)
 query = f'''
 SELECT region, capacidad
@@ -99,7 +97,7 @@ def asignar_buses_por_comuna(df_filtrado, nombre="SUBIDA"):
         for cap in capacidades:
             while cantidad >= cap:
                 bus_info.append({
-                    "id": f"{nombre.lower()}_bus{bus_counter}",
+                    "id": f"{nombre.lower()}_bus{turno_id}_{bus_counter}",
                     "region": region,
                     "capacidad": cap,
                     "comunas": [comuna],
@@ -164,7 +162,7 @@ def asignar_buses_por_comuna(df_filtrado, nombre="SUBIDA"):
                 remanentes[comuna_g]["cantidad"] = cant_rest
 
         bus_info.append({
-            "id": f"{nombre.lower()}_bus{bus_counter}",
+            "id": f"{nombre.lower()}_bus{turno_id}_{bus_counter}",
             "region": base_region,
             "capacidad": cap_seleccionada,
             "comunas": list(set(comunas_en_bus)),
