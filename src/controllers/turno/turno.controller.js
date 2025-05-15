@@ -19,7 +19,36 @@ async function crearTurno(req, res) {
         modeloEjecutado: false,
       },
     });
-    
+          const capacidades_por_region = {
+        "V": [12, 20, 10],
+        "IV": [16, 8],
+        "RM": [20, 30],
+      };
+
+      for (const region in capacidades_por_region) {
+        const capacidades = capacidades_por_region[region];
+
+        for (const capacidad of capacidades) {
+          const existe = await prisma.capacidadTurno.findFirst({
+            where: {
+              turnoId: turno.id,
+              region: region,
+              capacidad: capacidad,
+            },
+          });
+
+          if (!existe) {
+            await prisma.capacidadTurno.create({
+              data: {
+                turnoId: turno.id,
+                region: region,
+                capacidad: capacidad,
+              },
+            });
+          }
+        }
+      }
+
     console.log("📅 Turno creado con fecha:", turno.fecha.toISOString());
     res.status(201).json(turno);
   } catch (error) {
@@ -146,8 +175,90 @@ async function editarFechaTurno(req, res) {
     res.status(500).json({ error: "Error al editar turno" });
   }
 }
+async function obtenerCapacidadTurno(req, res) {
+  try {
+    const { id } = req.params;
+    const capacidadTurno = await prisma.capacidadTurno.findMany({
+      where: { turnoId: id },
+      // Puedes incluir más detalles si tu modelo lo permite
+    });
 
- 
+    res.json(capacidadTurno);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener capacidades del turno' });
+  }
+}
+
+async function agregarCapacidadTurno(req, res) {
+  try {
+    const { id } = req.params;
+    const { capacidades_por_region } = req.body;
+    const turno = await prisma.turno.findUnique({
+      where: { id: id },
+    });
+    for (const region in capacidades_por_region) {
+      const capacidades = capacidades_por_region[region];
+
+      for (const capacidad of capacidades) {
+        const existe = await prisma.capacidadTurno.findFirst({
+          where: {
+            turnoId: turno.id,
+            region: region,
+            capacidad: capacidad,
+          },
+        });
+
+        if (!existe) {
+          await prisma.capacidadTurno.create({
+            data: {
+              turnoId: turno.id,
+              region: region,
+              capacidad: capacidad,
+            },
+          });
+        }
+      }
+    }
+
+
+    res.status(204).send();
+  } catch (error) {
+    console.error("Error al agregar capacidad al turno:", error);
+    res.status(500).json({ error: "Error al agregar capacidad al turno" });
+  }
+}
+async function editarCapacidadTurno(req, res) {
+  try {
+    const { capacidades} = req.body;
+    for (const capacidad of capacidades) {
+      id = capacidad.id;
+      capacidadNumero = capacidad.capacidad;
+      region = capacidad.region;
+      await prisma.capacidadTurno.update({
+      where: { id },
+      data: {
+        region: region,
+        capacidad: capacidadNumero,
+      },
+    })};
+    res.status(204).send();
+  } catch (error) {
+    console.error("Error al editar capacidad:", error);
+    res.status(500).json({ error: "Error al editar capacidad" });
+  }
+}
+
+async function eliminarCapacidadTurno(req, res) {
+  try {
+    const {id} = req.body;
+    console.log("ID de capacidad a eliminar:", id);
+    await prisma.capacidadTurno.delete({ where: { id } });
+    res.status(204).send();
+  } catch (error) {
+    console.error("Error al eliminar capacidad:", error);
+    res.status(500).json({ error: 'Error al eliminar turno' });
+  }
+}
 // Eliminar turno
 async function eliminarTurno(req, res) {
   try {
@@ -549,4 +660,8 @@ module.exports = {
   obtenerAsignacionesDeTurno,
   obtenerHistorialDeTurno,
   exportarAsignaciones,
+  agregarCapacidadTurno,
+  obtenerCapacidadTurno,
+  editarCapacidadTurno,
+  eliminarCapacidadTurno
 };
