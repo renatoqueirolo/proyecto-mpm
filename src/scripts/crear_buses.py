@@ -38,11 +38,17 @@ if df_tt.empty:
 CANTIDAD_BUSES_SUBIDA = 5
 CANTIDAD_BUSES_BAJADA = 5
 # Capacidades por región (puedes modificar según demanda real)
-capacidades_por_region = {
-    "V": [12, 20, 10],
-    "IV": [16, 8],
-    "RM": [20, 30],
-}
+query = f'''
+SELECT region, capacidad
+FROM "CapacidadTurno"
+WHERE "turnoId" = '{turno_id}'
+'''
+
+df = pd.read_sql(query, engine)
+
+capacidades_por_region = {}
+for region, group in df.groupby('region'):
+    capacidades_por_region[region] = group['capacidad'].tolist()
 
 comuna_a_region = {
     "VIÑA DEL MAR": "V",
@@ -105,62 +111,69 @@ def asignar_buses_por_comuna(df_filtrado, nombre="SUBIDA"):
         if cantidad > 0:
             remanentes[comuna] = {"region": region, "cantidad": cantidad}
 
-    usados = set()
-    for region, comunas in comunas_por_region.items():
-        capacidades = sorted(capacidades_por_region.get(region, []), reverse=True)
-        comunas_region_rem = [c for c in comunas if c in remanentes and (region, c) not in usados]
+    # 2. Asignar buses combinados para remanentes
+    capacidades_por_region_sorted = {r: sorted(caps) for r, caps in capacidades_por_region.items()}
 
-        while comunas_region_rem:
-            base = comunas_region_rem[0]
-            grupo = [(base, remanentes[base]["cantidad"])]
-            usados.add((region, base))
+    while remanentes:
+        # Tomamos una comuna remanente cualquiera para base
+        base_comuna = next(iter(remanentes))
+        base_region = remanentes[base_comuna]["region"]
+        base_cant = remanentes[base_comuna]["cantidad"]
 
-            for other in comunas_region_rem[1:]:
-                if (region, other) in usados:
-                    continue
-                if obtener_distancia(base, other) <= THRESHOLD_DISTANCE:
-                    grupo.append((other, remanentes[other]["cantidad"]))
-                    usados.add((region, other))
+        capacidades = capacidades_por_region_sorted.get(base_region, [])
 
-            total = sum(cant for _, cant in grupo)
-            asignado = False
-            for cap in capacidades:
-                if total >= cap:
-                    restantes = cap
-                    comunas_en_bus = []
-                    for i in range(len(grupo)):
-                        comuna_i, cant_i = grupo[i]
-                        if cant_i > 0 and restantes > 0:
-                            tomar = min(restantes, cant_i)
-                            if comuna_i not in comunas_en_bus:
-                                comunas_en_bus.append(comuna_i)
-                            grupo[i] = (comuna_i, cant_i - tomar)
-                            restantes -= tomar
-                    bus_info.append({
-                        "id": f"{nombre.lower()}_bus{bus_counter}",
-                        "region": region,
-                        "capacidad": cap,
-                        "comunas": comunas_en_bus,
-                        "subida": nombre == "SUBIDA"
-                    })
-                    bus_counter += 1
-                    asignado = True
-                    break
+        # Buscamos comunas cercanas para agrupar
+        grupo = [(base_comuna, base_cant)]
+        comunas_a_quitar = [base_comuna]
 
-            if not asignado and total > 0:
-                comunas_en_bus = [comuna for comuna, cant in grupo if cant > 0]
-                bus_info.append({
-                    "id": f"{nombre.lower()}_bus{bus_counter}",
-                    "region": region,
-                    "capacidad": min(capacidades),
-                    "comunas": comunas_en_bus,
-                    "subida": nombre == "SUBIDA"
-                })
-                bus_counter += 1
+        for otra_comuna, datos in remanentes.items():
+            if otra_comuna == base_comuna:
+                continue
+            if datos["region"] == base_region:
+                if obtener_distancia(base_comuna, otra_comuna) <= THRESHOLD_DISTANCE:
+                    grupo.append((otra_comuna, datos["cantidad"]))
+                    comunas_a_quitar.append(otra_comuna)
 
-            comunas_region_rem = [c for c in comunas_region_rem if (region, c) not in usados]
+        total_personas = sum(cant for _, cant in grupo)
+
+        # Seleccionamos la capacidad de bus que mejor se ajuste (capacidad >= total_personas o la máxima disponible)
+        cap_seleccionada = None
+        for cap in capacidades:
+            if cap >= total_personas:
+                cap_seleccionada = cap
+                break
+        if not cap_seleccionada:
+            cap_seleccionada = capacidades[-1]  # la menor capacidad si ninguna alcanza total
+
+        # Ahora asignamos personas a este bus respetando cap_seleccionada
+        restante_bus = cap_seleccionada
+        comunas_en_bus = []
+        for i, (comuna_g, cant_g) in enumerate(grupo):
+            if cant_g == 0 or restante_bus == 0:
+                continue
+            a_asignar = min(cant_g, restante_bus)
+            comunas_en_bus.append(comuna_g)
+            grupo[i] = (comuna_g, cant_g - a_asignar)
+            restante_bus -= a_asignar
+
+        # Actualizamos remanentes según lo asignado
+        for comuna_g, cant_rest in grupo:
+            if cant_rest == 0 and comuna_g in remanentes:
+                del remanentes[comuna_g]
+            else:
+                remanentes[comuna_g]["cantidad"] = cant_rest
+
+        bus_info.append({
+            "id": f"{nombre.lower()}_bus{bus_counter}",
+            "region": base_region,
+            "capacidad": cap_seleccionada,
+            "comunas": list(set(comunas_en_bus)),
+            "subida": nombre == "SUBIDA"
+        })
+        bus_counter += 1
 
     return bus_info
+
 
 
 # Excluir comuna no deseada en buses
@@ -189,6 +202,7 @@ if not row:
 fecha_turno = row[0]  # Este es un datetime.date o datetime.datetime
 
 for bus in todos_los_buses:
+    print(bus)
     bus_id = bus["id"]
     capacidad = bus["capacidad"]
     subida = bus["subida"]
