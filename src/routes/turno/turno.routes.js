@@ -17,6 +17,10 @@ const {
   obtenerAsignacionesDeTurno,
   obtenerHistorialDeTurno,
   exportarAsignaciones,
+  agregarCapacidadTurno,
+  obtenerCapacidadTurno,
+  editarCapacidadTurno,
+  eliminarCapacidadTurno,
 } = require('../../controllers/turno/turno.controller');
 
 /**
@@ -273,6 +277,62 @@ router.post('/:id/restricciones', crearRestriccionTurno);
  */
 router.post('/:id/optimizar', optimizarTurno);
 
+/**
+ * @swagger
+ * /turnos/{id}/capacidad:
+ *   post:
+ *     summary: Crear una capacidad para un turno
+ *     tags: [Turnos]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       201:
+ *         description: Capacidad creada
+ */
+router.post('/:id/capacidad', agregarCapacidadTurno);
+
+/**
+ * @swagger
+ * /turnos/{id}/capacidad:
+ *   get:
+ *     summary: Obtener capacidades de un turno
+ *     tags: [Turnos]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Capacidades encontradas
+ */
+router.get('/:id/capacidad', obtenerCapacidadTurno);
+
+router.put('/:id/capacidad', editarCapacidadTurno);
+
+
+/**
+ * @swagger
+ * /turnos/{id}/capacidad:
+ *   delete:
+ *     summary: Eliminar capacidad
+ *     tags: [Turnos]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       204:
+ *         description: Eliminado exitosamente
+ */
+router.delete('/:id/capacidad', eliminarCapacidadTurno);
 /**
  * @swagger
  * /turnos/{id}/asignaciones:

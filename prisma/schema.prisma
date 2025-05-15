@@ -49,6 +49,7 @@ model Turno {
   planeTurno         PlaneTurno[]
   restricciones      RestriccionTurno[]
   historialAsignacion HistorialAsignacion[]
+  CapacidadTurno     CapacidadTurno[]
 }
 
 model TrabajadorTurno {
@@ -83,7 +84,14 @@ model BusTurno {
   assignmentBuses AssignmentBus[]
 }
 
+model CapacidadTurno {
+  id              String   @id @default(cuid())
+  turnoId         String
+  capacidad       Int
+  region          String  
 
+  turno           Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+}
 model Plane {
   id        String          @id @default(cuid())
   capacidad Int
