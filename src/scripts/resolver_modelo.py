@@ -7,7 +7,7 @@ import os
 import argparse
 from dotenv import load_dotenv
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 import unicodedata
 
@@ -95,9 +95,6 @@ CV = df_planes.set_index("plane_turno_id")["capacidad"].to_dict()
 def hora_str_a_minutos(hora_str):
     h, m = map(int, hora_str.split(":"))
     return h * 60 + m
-
-HB = df_buses.set_index("id").apply(
-    lambda r: int(pd.to_datetime(r["horario_llegada"]).hour * 60 + pd.to_datetime(r["horario_llegada"]).minute), axis=1).to_dict()
     
 HV = df_planes.set_index("plane_turno_id")["horario_salida"].apply(hora_str_a_minutos).to_dict()
 
@@ -116,6 +113,9 @@ destino_planes = df_planes.set_index("plane_turno_id")["ciudad_destino"].str.upp
 model = cp_model.CpModel()
 x = {}
 y = {}
+HB_var = {}
+min_hora = 800
+max_hora = 2200
 
 for t in trabajadores:
     for b in buses:
@@ -131,6 +131,7 @@ for t in trabajadores:
 # Restricción: capacidad buses y vuelos
 for b in buses:
     model.Add(sum(x[(t, b)] for t in trabajadores) <= CB[b])
+    HB_var[b] = model.NewIntVar(min_hora, max_hora, f'HB_{b}')
 for v in vuelos:
     model.Add(sum(y[(t, v)] for t in trabajadores) <= CV[v])
 
@@ -156,14 +157,12 @@ for t in trabajadores:
                 model.Add(y[(t, v)] == 0)
 
     # Restricción de conexión temporal
-    """for b in buses:
+    for b in buses:
         for v in vuelos:
             if subida:
-                if HB[b] + 180 > HV[v]:
-                    model.AddBoolOr([x[(t, b)].Not(), y[(t, v)].Not()])
+                model.Add(HB_var[b] + 180 <= HV[v]).OnlyEnforceIf([x[(t, b)], y[(t, v)]])
             else:
-                if HV[v]> HB[b]:
-                    model.AddBoolOr([x[(t, b)].Not(), y[(t, v)].Not()])"""
+                model.Add(HB_var[b] >= HV[v]).OnlyEnforceIf([x[(t, b)], y[(t, v)]])
 
 # -------------------------
 # Logs para depuración
@@ -211,14 +210,24 @@ print(f"📦 Variables y creadas: {len(y)}")
 # -------------------------
 espera_total = []
 for t in trabajadores:
-    for b in buses:
-        for v in vuelos:
-            subida = df_trabajadores[df_trabajadores["trabajador_id"] == t]["subida"].values[0]
-            diff = HV[v] - HB[b] if subida else HB[b] - HV[v]
-            comb = model.NewBoolVar(f'c_{t}_{b}_{v}')
-            model.AddBoolAnd([x[(t, b)], y[(t, v)]]).OnlyEnforceIf(comb)
-            model.AddBoolOr([x[(t, b)].Not(), y[(t, v)].Not()]).OnlyEnforceIf(comb.Not())
-            espera_total.append(diff * comb)
+    if region_trabajadores[t] != 13:
+        for b in buses:
+            for v in vuelos:
+                subida = df_trabajadores[df_trabajadores["trabajador_id"] == t]["subida"].values[0]
+                diff = model.NewIntVar(-1440, 1440, f'diff_{t}_{b}_{v}')
+                if subida:
+                    model.Add(diff == HV[v] - HB_var[b])
+                else:
+                    model.Add(diff == HB_var[b] - HV[v])
+
+                comb = model.NewBoolVar(f'c_{t}_{b}_{v}')
+                model.AddBoolAnd([x[(t, b)], y[(t, v)]]).OnlyEnforceIf(comb)
+                model.AddBoolOr([x[(t, b)].Not(), y[(t, v)].Not()]).OnlyEnforceIf(comb.Not())
+
+                espera = model.NewIntVar(-1440, 1440, f'espera_{t}_{b}_{v}')
+                model.Add(espera == diff).OnlyEnforceIf(comb)
+                model.Add(espera == 0).OnlyEnforceIf(comb.Not())
+                espera_total.append(espera)
 
 model.Minimize(sum(espera_total))
 
@@ -232,7 +241,7 @@ print("🔍 Capacidad total vuelos:", sum(CV.values()))
 # Resolver
 # -------------------------
 solver = cp_model.CpSolver()
-solver.parameters.max_time_in_seconds = 300
+solver.parameters.max_time_in_seconds = 500
 # Tiempo límite y estadísticas iniciales
 print(f"\n🧠 Tiempo límite de resolución: {solver.parameters.max_time_in_seconds} segundos")
 print("📈 Comenzando resolución...")
@@ -240,6 +249,7 @@ status = solver.Solve(model)
 
 if status in [cp_model.FEASIBLE, cp_model.OPTIMAL]:
     print("✅ Solución encontrada. Valor objetivo:", solver.ObjectiveValue())
+    print("Espera Promedio:", (solver.ObjectiveValue())/len(trabajadores))
 else:
     print("❌ No se encontró solución.")
     exit()
@@ -277,6 +287,31 @@ for t in trabajadores:
                 INSERT INTO "AssignmentPlane" (id, "trabajadorTurnoId", "planeTurnoId")
                 VALUES (%s, %s, %s)
             ''', (str(uuid4()), t, v))
+
+# -------------------------
+# Actualizar horarios optimizados de buses
+# -------------------------
+cursor.execute('SELECT "fecha" FROM "Turno" WHERE "id" = %s', (turno_id,))
+row = cursor.fetchone()
+if not row:
+    print(f"No se encontró el turno con ID {turno_id}")
+    exit()
+fecha_turno = row[0]
+
+for b in buses:
+    horario_llegada_min = solver.Value(HB_var[b])
+    horario_llegada = datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=horario_llegada_min)
+    horario_salida = horario_llegada - timedelta(minutes=60)  # duración fija del trayecto
+
+    cursor.execute('''
+        UPDATE "BusTurno"
+        SET "horario_salida" = %s, "horario_llegada" = %s
+        WHERE id = %s
+    ''', (
+        horario_salida,
+        horario_llegada,
+        b
+    ))
 
 conn.commit()
 cursor.close()
