@@ -10,6 +10,8 @@ from uuid import uuid4
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 import unicodedata
+import time
+start_time = time.time()
 
 def normalizar(texto):
     if not isinstance(texto, str):
@@ -97,13 +99,10 @@ def hora_str_a_minutos(hora_str):
     return h * 60 + m
     
 HV = df_planes.set_index("plane_turno_id")["horario_salida"].apply(hora_str_a_minutos).to_dict()
+HV_bajada = df_planes.set_index("plane_turno_id")["horario_llegada"].apply(hora_str_a_minutos).to_dict()
 
-comunas_origen_bus = df_buses.set_index("id")["comunas_origen"].apply(
-    lambda x: x if isinstance(x, list) else json.loads(x)
-).to_dict()
-comunas_destino_bus = df_buses.set_index("id")["comunas_destino"].apply(
-    lambda x: x if isinstance(x, list) else json.loads(x)
-).to_dict()
+comunas_origen_bus = df_buses.set_index("id")["comunas_origen"].apply(lambda x: x if isinstance(x, list) else json.loads(x)).to_dict()
+comunas_destino_bus = df_buses.set_index("id")["comunas_destino"].apply(lambda x: x if isinstance(x, list) else json.loads(x)).to_dict()
 origen_planes = df_planes.set_index("plane_turno_id")["ciudad_origen"].str.upper().to_dict()
 destino_planes = df_planes.set_index("plane_turno_id")["ciudad_destino"].str.upper().to_dict()
 
@@ -111,11 +110,20 @@ destino_planes = df_planes.set_index("plane_turno_id")["ciudad_destino"].str.upp
 # Modelo OR-Tools
 # -------------------------
 model = cp_model.CpModel()
+
+#Parametros
+min_hora = 800
+max_hora = 2000
+espera_conexion_subida = 180
+espera_conexion_bajada = 10
+tiempo_trayecto_bus = 60
+tiempo_adicional_parada = 30
+max_tiempo_ejecucion = 200 #segundos
+
+#Restricciones y Variables
 x = {}
 y = {}
 HB_var = {}
-min_hora = 800
-max_hora = 2200
 
 for t in trabajadores:
     for b in buses:
@@ -160,15 +168,13 @@ for t in trabajadores:
     for b in buses:
         for v in vuelos:
             if subida:
-                model.Add(HB_var[b] + 180 <= HV[v]).OnlyEnforceIf([x[(t, b)], y[(t, v)]])
+                model.Add(HB_var[b] + espera_conexion_subida <= HV[v]).OnlyEnforceIf([x[(t, b)], y[(t, v)]])
             else:
-                model.Add(HB_var[b] >= HV[v]).OnlyEnforceIf([x[(t, b)], y[(t, v)]])
+                model.Add(HB_var[b] >= HV_bajada[v] + espera_conexion_bajada).OnlyEnforceIf([x[(t, b)], y[(t, v)]])
 
 # -------------------------
 # Logs para depuración
 # -------------------------
-
-print("\n📋 Validando compatibilidad de rutas por trabajador:")
 incompatibles_bus = 0
 incompatibles_vuelo = 0
 
@@ -201,35 +207,41 @@ for t in trabajadores:
 print(f"\n🚫 Trabajadores sin buses compatibles: {incompatibles_bus}")
 print(f"🚫 Trabajadores sin vuelos compatibles: {incompatibles_vuelo}")
 
-# Chequeo adicional: variables que sí fueron creadas
-print(f"\n📦 Variables x creadas: {len(x)}")
-print(f"📦 Variables y creadas: {len(y)}")
-
 # -------------------------
 # Función objetivo: minimizar espera
 # -------------------------
 espera_total = []
+comb_vars = {}
 for t in trabajadores:
     if region_trabajadores[t] != 13:
+        subida = df_trabajadores[df_trabajadores["trabajador_id"] == t]["subida"].values[0]
         for b in buses:
             for v in vuelos:
-                subida = df_trabajadores[df_trabajadores["trabajador_id"] == t]["subida"].values[0]
-                diff = model.NewIntVar(-1440, 1440, f'diff_{t}_{b}_{v}')
-                if subida:
-                    model.Add(diff == HV[v] - HB_var[b])
-                else:
-                    model.Add(diff == HB_var[b] - HV[v])
+                # Crear la variable de diferencia
+                diff_expr = HV[v] - HB_var[b] if subida else HB_var[b] - HV_bajada[v]
 
+                # Crear variable de combinación
                 comb = model.NewBoolVar(f'c_{t}_{b}_{v}')
+                comb_vars[(t, b, v)] = comb
                 model.AddBoolAnd([x[(t, b)], y[(t, v)]]).OnlyEnforceIf(comb)
                 model.AddBoolOr([x[(t, b)].Not(), y[(t, v)].Not()]).OnlyEnforceIf(comb.Not())
 
+                # Crear variable de espera condicional
                 espera = model.NewIntVar(-1440, 1440, f'espera_{t}_{b}_{v}')
-                model.Add(espera == diff).OnlyEnforceIf(comb)
+                model.Add(espera == diff_expr).OnlyEnforceIf(comb)
                 model.Add(espera == 0).OnlyEnforceIf(comb.Not())
+
+                # Agregar a la función objetivo
                 espera_total.append(espera)
 
 model.Minimize(sum(espera_total))
+
+# Chequeo: variables que fueron creadas
+print(f"\n📦 Variables x creadas: {len(x)}")
+print(f"📦 Variables y creadas: {len(y)}")
+print(f"📦 Variables HB_var creadas: {len(HB_var)}")
+print(f"📦 Variables comb creadas: {len(comb_vars)}")
+print(f"📦 Variables espera creadas: {len(espera_total)}")
 
 print("🔍 Total trabajadores:", len(trabajadores))
 print("🔍 Total buses:", len(buses))
@@ -241,19 +253,32 @@ print("🔍 Capacidad total vuelos:", sum(CV.values()))
 # Resolver
 # -------------------------
 solver = cp_model.CpSolver()
-solver.parameters.max_time_in_seconds = 500
+solver.parameters.max_time_in_seconds = max_tiempo_ejecucion
 # Tiempo límite y estadísticas iniciales
 print(f"\n🧠 Tiempo límite de resolución: {solver.parameters.max_time_in_seconds} segundos")
 print("📈 Comenzando resolución...")
 status = solver.Solve(model)
 
+end_time = time.time()
+elapsed_time = end_time - start_time
+print(f"⏱ Tiempo total Ejecución: {elapsed_time:.2f} segundos")
+
 if status in [cp_model.FEASIBLE, cp_model.OPTIMAL]:
     print("✅ Solución encontrada. Valor objetivo:", solver.ObjectiveValue())
-    print("Espera Promedio:", (solver.ObjectiveValue())/len(trabajadores))
+    trabajadores_no_rm = [t for t in trabajadores if region_trabajadores[t] != 13]
+    if trabajadores_no_rm:
+        print("Espera Promedio:", solver.ObjectiveValue() / len(trabajadores_no_rm))
+    else:
+        print("No hay trabajadores fuera de la Región Metropolitana (Región 13)")
+        print("Espera Promedio:", solver.ObjectiveValue())
+
 else:
     print("❌ No se encontró solución.")
     exit()
 
+# -------------------------
+# Guardar Resultados
+# -------------------------
 # Limpiar asignaciones anteriores del turno
 cursor.execute('''
     DELETE FROM "AssignmentBus"
@@ -301,7 +326,10 @@ fecha_turno = row[0]
 for b in buses:
     horario_llegada_min = solver.Value(HB_var[b])
     horario_llegada = datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=horario_llegada_min)
-    horario_salida = horario_llegada - timedelta(minutes=60)  # duración fija del trayecto
+    duracion = tiempo_trayecto_bus
+    if len(comunas_origen_bus[b]) > 1:
+        duracion += tiempo_adicional_parada*(len(comunas_origen_bus[b])-1)
+    horario_salida = horario_llegada - timedelta(minutes=duracion)  # duración fija del trayecto
 
     cursor.execute('''
         UPDATE "BusTurno"
