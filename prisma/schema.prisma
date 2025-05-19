@@ -50,6 +50,13 @@ model Turno {
   restricciones      RestriccionTurno[]
   historialAsignacion HistorialAsignacion[]
   CapacidadTurno     CapacidadTurno[]
+  espera_conexion_subida   Int    @default(180)
+  espera_conexion_bajada   Int    @default(10)
+  tiempo_promedio_espera   Float    @default(0)
+  max_tiempo_ejecucion     Int      @default(120)
+  tiempo_adicional_parada  Int      @default(30)
+  min_hora                 Int      @default(800)
+  max_hora                 Int      @default(2000)
 }
 
 model TrabajadorTurno {
