@@ -54,11 +54,20 @@ df_buses = pd.read_sql(f'''
 ''', engine)
 
 df_planes = pd.read_sql(f'''
-    SELECT PT.id AS plane_turno_id, P.*, PT."turnoId"
+    SELECT 
+        PT.id AS plane_turno_id,
+        PT."turnoId",
+        PT."planeId",
+        PT."horario_salida",
+        PT."horario_llegada",
+        P."ciudad_origen",
+        P."ciudad_destino",
+        P."capacidad"
     FROM "PlaneTurno" PT
     JOIN "Plane" P ON PT."planeId" = P."id"
     WHERE PT."turnoId" = '{turno_id}';
 ''', engine)
+
 
 # -------------------------
 # Preprocesamiento
@@ -94,12 +103,29 @@ vuelos = df_planes["plane_turno_id"].tolist()
 CB = df_buses.set_index("id")["capacidad"].to_dict()
 CV = df_planes.set_index("plane_turno_id")["capacidad"].to_dict()
 
-def hora_str_a_minutos(hora_str):
-    h, m = map(int, hora_str.split(":"))
-    return h * 60 + m
-    
-HV = df_planes.set_index("plane_turno_id")["horario_salida"].apply(hora_str_a_minutos).to_dict()
-HV_bajada = df_planes.set_index("plane_turno_id")["horario_llegada"].apply(hora_str_a_minutos).to_dict()
+cursor.execute('SELECT "fecha" FROM "Turno" WHERE "id" = %s', (turno_id,))
+row = cursor.fetchone()
+if not row:
+    print(f"No se encontró el turno con ID {turno_id}")
+    exit()
+fecha_turno = row[0]
+
+def datetime_to_minutos(horario_dt: datetime, fecha_base: datetime):
+    minutos = horario_dt.hour * 60 + horario_dt.minute
+    if horario_dt.date() > fecha_base.date():
+        minutos += 24 * 60  # sumar 24h si el vuelo es del día siguiente
+    return minutos
+
+HV = {
+    row["plane_turno_id"]: datetime_to_minutos(row["horario_salida"], fecha_turno)
+    for _, row in df_planes.iterrows()
+}
+
+HV_bajada = {
+    row["plane_turno_id"]: datetime_to_minutos(row["horario_llegada"], fecha_turno)
+    for _, row in df_planes.iterrows()
+}
+
 
 comunas_origen_bus = df_buses.set_index("id")["comunas_origen"].apply(lambda x: x if isinstance(x, list) else json.loads(x)).to_dict()
 comunas_destino_bus = df_buses.set_index("id")["comunas_destino"].apply(lambda x: x if isinstance(x, list) else json.loads(x)).to_dict()
@@ -316,20 +342,21 @@ for t in trabajadores:
 # -------------------------
 # Actualizar horarios optimizados de buses
 # -------------------------
-cursor.execute('SELECT "fecha" FROM "Turno" WHERE "id" = %s', (turno_id,))
-row = cursor.fetchone()
-if not row:
-    print(f"No se encontró el turno con ID {turno_id}")
-    exit()
-fecha_turno = row[0]
 
 for b in buses:
-    horario_llegada_min = solver.Value(HB_var[b])
-    horario_llegada = datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=horario_llegada_min)
     duracion = tiempo_trayecto_bus
     if len(comunas_origen_bus[b]) > 1:
         duracion += tiempo_adicional_parada*(len(comunas_origen_bus[b])-1)
-    horario_salida = horario_llegada - timedelta(minutes=duracion)  # duración fija del trayecto
+    
+    if "subida" in b.lower():
+        horario_llegada_min = solver.Value(HB_var[b])
+        horario_llegada = datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=horario_llegada_min)
+        horario_salida = horario_llegada - timedelta(minutes=duracion)
+
+    elif "bajada" in b.lower():
+        horario_salida_min = solver.Value(HB_var[b])
+        horario_salida = datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=horario_salida_min)
+        horario_llegada = horario_salida + timedelta(minutes=duracion)
 
     cursor.execute('''
         UPDATE "BusTurno"
