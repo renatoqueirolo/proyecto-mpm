@@ -1,6 +1,7 @@
 const ExcelJS = require('exceljs');
 const { execFile } = require('child_process');
 const path = require('path');
+const PdfPrinter = require('pdfmake');;
 
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
@@ -528,8 +529,96 @@ async function obtenerHistorialDeTurno(req, res) {
   }
 }
 
+// helpers/kpiUtils.js
+function calcularKPIs(turno, assignmentBuses, assignmentPlanes, busMap, planeMap) {
+  const totalTrab = turno.trabajadoresTurno.length;
+  const subida = turno.trabajadoresTurno.filter(t => t.subida);
+  const bajada = turno.trabajadoresTurno.filter(t => !t.subida);
 
-async function exportarAsignaciones(req, res) {
+  const totalBuses  = new Set(assignmentBuses.map(a => a.busTurnoId)).size;
+  const totalVuelos = new Set(assignmentPlanes.map(a => a.planeTurnoId)).size;
+
+  const ocupacionPorBus = turno.busTurno
+    .map(b => {
+      const asignados = assignmentBuses.filter(a => a.busTurnoId === b.id).length;
+      return {
+        asignados,
+        capacidad: b.capacidad,
+        ocupacion: b.capacidad ? asignados / b.capacidad : 0,
+      };
+    })
+    .filter(b => b.asignados > 0);
+
+  const promedioOcupacionBus = ocupacionPorBus.length > 0
+    ? ocupacionPorBus.reduce((a, b) => a + b.ocupacion, 0) / ocupacionPorBus.length
+    : 0;
+
+  const ocupacionPorVuelo = turno.planeTurno
+    .map(p => {
+      const asignados = assignmentPlanes.filter(a => a.planeTurnoId === p.id).length;
+      const capacidad = p.plane?.capacidad ?? p.capacidad;
+      return {
+        asignados,
+        capacidad,
+        ocupacion: capacidad ? asignados / capacidad : 0,
+      };
+    })
+    .filter(p => p.asignados > 0);
+
+  const promedioOcupacionVuelo = ocupacionPorVuelo.length > 0
+    ? ocupacionPorVuelo.reduce((a, b) => a + b.ocupacion, 0) / ocupacionPorVuelo.length
+    : 0;
+
+  const tiemposTraslado = turno.trabajadoresTurno.map(t => {
+    const bus = busMap[t.id];
+    const vuelo = planeMap[t.id];
+    if (!bus || !vuelo) return null;
+    const inicio = new Date(t.subida ? bus.horario_salida : vuelo.horario_salida);
+    const fin    = new Date(t.subida ? vuelo.horario_llegada : bus.horario_llegada);
+    const horas  = (fin.getTime() - inicio.getTime()) / 36e5;
+    return horas > 0 ? horas : null;
+  }).filter(h => h !== null);
+
+  const tPromedio = tiemposTraslado.length > 0
+    ? tiemposTraslado.reduce((a, b) => a + b, 0) / tiemposTraslado.length
+    : 0;
+
+  const esperas = turno.trabajadoresTurno.map(t => {
+    const bus = busMap[t.id];
+    const vuelo = planeMap[t.id];
+    if (!bus || !vuelo) return null;
+    const espera = t.subida
+      ? (new Date(vuelo.horario_salida).getTime() - new Date(bus.horario_llegada).getTime()) / 60000
+      : (new Date(bus.horario_salida).getTime() - new Date(vuelo.horario_llegada).getTime()) / 60000;
+    return espera > 0 ? espera : null;
+  }).filter(e => e !== null);
+
+  const esperaPromedio = esperas.length > 0
+    ? esperas.reduce((a, b) => a + b, 0) / esperas.length
+    : 0;
+
+  const esperaSobre60 = esperas.filter(e => e > 60).length;
+  const porcentajeSobre60 = esperas.length > 0
+    ? (esperaSobre60 / esperas.length) * 100
+    : 0;
+
+  return [
+    ["Trabajadores Totales", totalTrab],
+    ["Trabajadores Subida", subida.length],
+    ["Trabajadores Bajada", bajada.length],
+    ["T. promedio traslado (h)", tPromedio.toFixed(1)],
+    ["Espera promedio (min)", esperaPromedio.toFixed(0)],
+    ["% espera > 60 min", porcentajeSobre60.toFixed(1) + " %"],
+    ["Buses utilizados", totalBuses],
+    ["Vuelos utilizados", totalVuelos],
+    ["Ocupación media buses (%)", (promedioOcupacionBus * 100).toFixed(1)],
+    ["Ocupación media vuelos (%)", (promedioOcupacionVuelo * 100).toFixed(1)]
+  ];
+}
+
+
+
+async function exportarAsignacionesExcel(req, res) {
   const { id } = req.params;
   const nombreArchivo = (req.query.nombre) || `asignaciones_turno_${id}`;
 
@@ -566,53 +655,22 @@ async function exportarAsignaciones(req, res) {
 
     /******** Hoja 1: Resumen global ************************************/
     const resumen = wb.addWorksheet("Resumen");
-    const totalTrab   = turno.trabajadoresTurno.length;
-    const totalBuses  = new Set(assignmentBuses.map(a => a.busTurnoId)).size;
-    const totalVuelos = new Set(assignmentPlanes.map(a => a.planeTurnoId)).size;
-    const ocupacionPorBus = turno.busTurno
-      .map(b => {
-        const asignados = assignmentBuses.filter(a => a.busTurnoId === b.id).length;
-        return {
-          asignados,
-          capacidad: b.capacidad,
-          ocupacion: b.capacidad ? asignados / b.capacidad : 0,
-        };
-      })
-      .filter(b => b.asignados > 0); // ← solo buses usados
-
-    const promedioOcupacionBus = ocupacionPorBus.length > 0
-      ? ocupacionPorBus.reduce((a, b) => a + b.ocupacion, 0) / ocupacionPorBus.length
-      : 0;
-    const ocupacionPorVuelo = turno.planeTurno
-      .map(p => {
-        const asignados = assignmentPlanes.filter(a => a.planeTurnoId === p.id).length;
-        const capacidad = p.plane?.capacidad ?? p.capacidad; // fallback
-        return {
-          asignados,
-          capacidad,
-          ocupacion: capacidad ? asignados / capacidad : 0,
-        };
-      })
-      .filter(p => p.asignados > 0); // ← solo vuelos usados
-
-    const promedioOcupacionVuelo = ocupacionPorVuelo.length > 0
-      ? ocupacionPorVuelo.reduce((a, b) => a + b.ocupacion, 0) / ocupacionPorVuelo.length
-      : 0;
+    const kpis = calcularKPIs(turno, assignmentBuses, assignmentPlanes, busMap, planeMap);
 
 
-    resumen.addRows([
-      ["KPI", "Valor"],
-      ["Trabajadores", totalTrab],
-      ["Buses utilizados", totalBuses],
-      ["Vuelos utilizados", totalVuelos],
-      ["Ocupación media buses (%)",
-        (promedioOcupacionBus * 100).toFixed(1)], // ej. si guardas capacidad en busTurno
-      ["Ocupación media vuelos (%)",
-        (promedioOcupacionVuelo * 100).toFixed(1)],
-    ]);
-    resumen.columns.forEach(c => (c.width = 26));
+    // KPI resumen
+    resumen.addRows([["KPI", "Valor"], ...kpis]);
+    resumen.columns.forEach(c => (c.width = 30));
     resumen.getRow(1).font = { bold: true };
+    resumen.eachRow((row, rowNumber) => {
+      row.eachCell(cell => {
+        cell.alignment = { horizontal: 'center' };
+      });
+    });
 
+
+
+    /******** Hoja itinerarios trabajadores por región ******************************/
     const porRegionYTipo = turno.trabajadoresTurno.reduce((acc, t) => {
       const region = t.region || "Sin región";
       const tipo = t.subida ? "Subida" : "Bajada";
@@ -786,6 +844,91 @@ async function exportarAsignaciones(req, res) {
   }
 }
 
+async function exportarAsignacionesPdf(req, res) {
+  try {
+    const { id } = req.params;
+
+    const turno = await prisma.turno.findUnique({
+      where: { id },
+      include: {
+        trabajadoresTurno: { include: { trabajador: true } },
+        planeTurno: { include: { plane: true } },
+        busTurno:  true,
+      },
+    });
+
+    const [assignmentBuses, assignmentPlanes] = await Promise.all([
+      prisma.assignmentBus.findMany({
+        where: { busTurno: { turnoId: id } },
+        include: { busTurno: true },
+      }),
+      prisma.assignmentPlane.findMany({
+        where: { planeTurno: { turnoId: id } },
+        include: { planeTurno: { include: { plane: true } } },
+      }),
+    ]);
+
+    const busMap   = Object.fromEntries(assignmentBuses .map(a => [a.trabajadorTurnoId, a.busTurno]));
+    const planeMap = Object.fromEntries(assignmentPlanes.map(a => [a.trabajadorTurnoId, a.planeTurno]));
+    const kpis = calcularKPIs(turno, assignmentBuses, assignmentPlanes, busMap, planeMap);
+
+    const fonts = {
+      Helvetica: {
+        normal: 'Helvetica',
+        bold: 'Helvetica-Bold',
+        italics: 'Helvetica-Oblique',
+        bolditalics: 'Helvetica-BoldOblique',
+      }
+    };
+
+
+    const printer = new PdfPrinter(fonts);
+
+    const docDefinition = {
+      content: [
+        { text: '📄 Reporte de Turno', style: 'header', alignment: 'center' },
+        { text: `ID del turno: ${turno.id}`, margin: [0, 10, 0, 4] },
+        { text: `Fecha: ${new Date(turno.fecha).toLocaleDateString()}` },
+        {
+          style: 'tableExample',
+          margin: [0, 20, 0, 0],
+          table: {
+            widths: ['*', '*'],
+            body: [
+              ['KPI', 'Valor'],
+              ...kpis
+            ]
+          }
+        }
+      ],
+      defaultStyle: {
+        font: 'Helvetica'
+      },  
+      styles: {
+        header: { fontSize: 18, bold: true, margin: [0, 0, 0, 10] },
+        tableExample: { margin: [0, 5, 0, 15] },
+      },
+    };
+
+    const pdfDoc = printer.createPdfKitDocument(docDefinition);
+    const chunks = [];
+
+    pdfDoc.on('data', chunk => chunks.push(chunk));
+    pdfDoc.on('end', () => {
+      const pdfBuffer = Buffer.concat(chunks);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=reporte_turno_${id}.pdf`);
+      res.send(pdfBuffer);
+    });
+
+    pdfDoc.end();
+  } catch (error) {
+    console.error("Error generando PDF:", error);
+    res.status(500).json({ error: 'No se pudo generar el PDF' });
+  }
+}
+
+
 
 async function obtenerParametrosModelo(req, res) {
   try {
@@ -871,7 +1014,8 @@ module.exports = {
   optimizarTurno,
   obtenerAsignacionesDeTurno,
   obtenerHistorialDeTurno,
-  exportarAsignaciones,
+  exportarAsignacionesExcel,
+  exportarAsignacionesPdf,
   agregarCapacidadTurno,
   obtenerCapacidadTurno,
   editarCapacidadTurno,

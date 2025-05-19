@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 40px;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .kpi {
+      margin-top: 20px;
+      border-collapse: collapse;
+      width: 100%;
+    }
+    .kpi th {
+      background-color: #f2f2f2;
+      text-align: center;
+      padding: 8px;
+    }
+    .kpi td {
+      text-align: center;
+      padding: 6px;
+      border-bottom: 1px solid #ddd;
+    }
+  </style>
+</head>
+<body>
+  <h1>📄 Reporte del Turno</h1>
+  <p><strong>ID turno:</strong> {{turnoId}}</p>
+  <p><strong>Fecha:</strong> {{fecha}}</p>
+
+  <table class="kpi">
+    <thead>
+      <tr><th>KPI</th><th>Valor</th></tr>
+    </thead>
+    <tbody>
+      {{#each kpis}}
+        <tr>
+          <td>{{this.label}}</td>
+          <td>{{this.value}}</td>
+        </tr>
+      {{/each}}
+    </tbody>
+  </table>
+</body>
+</html>
