@@ -9,53 +9,71 @@ const prisma = new PrismaClient();
 async function crearTurno(req, res) {
   try {
     const { fecha, creadoPorId } = req.body;
-    if ( !fecha || !creadoPorId) return res.status(400).json({ error: 'Faltan campos requeridos' });
-    const creadoPorIdString = creadoPorId.toString()
+    if (!fecha || !creadoPorId)
+      return res.status(400).json({ error: 'Faltan campos requeridos' });
 
-    const turno = await prisma.turno.create({
-      data: {
-        fecha: new Date(fecha),
-        creadoPorId: creadoPorIdString,
-        modeloEjecutado: false,
-      },
-    });
-          const capacidades_por_region = {
-        "V": [12, 20, 10],
-        "IV": [16, 8],
-        "RM": [20, 30],
-      };
+    const creadoPorIdString = creadoPorId.toString();
+
+    const capacidades_por_region = {
+      V: [12, 20, 10],
+      IV: [16, 8],
+      RM: [20, 30],
+    };
+
+    // Ejecutar todo en una transacción
+    const resultado = await prisma.$transaction(async (tx) => {
+      const turno = await tx.turno.create({
+        data: {
+          fecha: new Date(fecha),
+          creadoPorId: creadoPorIdString,
+          modeloEjecutado: false,
+        },
+      });
+
+      await tx.parametrosModeloTurno.create({
+        data: {
+          turnoId: turno.id,
+        },
+      });
+
+      const insertsCapacidad = [];
 
       for (const region in capacidades_por_region) {
         const capacidades = capacidades_por_region[region];
-
         for (const capacidad of capacidades) {
-          const existe = await prisma.capacidadTurno.findFirst({
-            where: {
-              turnoId: turno.id,
-              region: region,
-              capacidad: capacidad,
-            },
-          });
-
-          if (!existe) {
-            await prisma.capacidadTurno.create({
-              data: {
-                turnoId: turno.id,
-                region: region,
-                capacidad: capacidad,
+          insertsCapacidad.push(
+            tx.capacidadTurno.upsert({
+              where: {
+                turnoId_region_capacidad: {
+                  turnoId: turno.id,
+                  region,
+                  capacidad,
+                },
               },
-            });
-          }
+              update: {}, // si ya existe no cambia nada
+              create: {
+                turnoId: turno.id,
+                region,
+                capacidad,
+              },
+            })
+          );
         }
       }
 
-    console.log("📅 Turno creado con fecha:", turno.fecha.toISOString());
-    res.status(201).json(turno);
+      await Promise.all(insertsCapacidad);
+
+      return turno;
+    });
+
+    console.log('📅 Turno creado con fecha:', resultado.fecha.toISOString());
+    res.status(201).json(resultado);
   } catch (error) {
     console.error('Error al crear turno:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 }
+
 
 // Obtener todos los turnos
 async function obtenerTurnos(req, res) {
@@ -88,7 +106,7 @@ async function obtenerTurno(req, res) {
             trabajador: true,
           },
         },
-        restricciones: true,
+        parametrosModelo: true,
         busTurno: true,
         planeTurno: {
           include: {
@@ -404,28 +422,6 @@ const asignarAvionesATurno = async (req, res) => {
 };
 
 
-
-// Crear restricción
-async function crearRestriccionTurno(req, res) {
-  try {
-    const { id } = req.params;
-    const { tipo, valor, descripcion } = req.body;
-
-    const restriccion = await prisma.restriccionTurno.create({
-      data: {
-        turnoId: id,
-        tipo,
-        valor,
-        descripcion,
-      },
-    });
-
-    res.status(201).json(restriccion);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al crear restricción' });
-  }
-}
-
 // Ejecutar modelo de optimización 
 async function optimizarTurno(req, res) {
   const { id } = req.params;
@@ -642,6 +638,74 @@ async function exportarAsignaciones(req, res) {
   }
 }
 
+async function obtenerParametrosModelo(req, res) {
+  try {
+    const { id: turnoId } = req.params;
+    const parametros = await prisma.parametrosModeloTurno.findUnique({
+      where: { turnoId },
+    });
+
+    if (!parametros) {
+      return res.status(404).json({ error: 'Parámetros no encontrados' });
+    }
+
+    res.json(parametros);
+  } catch (error) {
+    console.error("Error al obtener parámetros:", error);
+    res.status(500).json({ error: 'Error al obtener parámetros del turno' });
+  }
+}
+
+
+
+async function actualizarParametrosModeloTurno(req, res) {
+  try {
+    const { id: turnoId } = req.params;
+    const {
+      espera_conexion_subida,
+      espera_conexion_bajada,
+      tiempo_promedio_espera,
+      max_tiempo_ejecucion,
+      tiempo_adicional_parada,
+      min_hora,
+      max_hora,
+    } = req.body;
+
+    // Verifica existencia del turno
+    const turno = await prisma.turno.findUnique({
+      where: { id: turnoId },
+      include: { parametrosModelo: true },
+    });
+
+    if (!turno) {
+      return res.status(404).json({ error: 'Turno no encontrado' });
+    }
+
+    if (!turno.parametrosModelo) {
+      return res.status(400).json({ error: 'Este turno no tiene parámetros asociados aún.' });
+    }
+
+    const parametrosActualizados = await prisma.parametrosModeloTurno.update({
+      where: {
+        turnoId: turnoId,
+      },
+      data: {
+        espera_conexion_subida,
+        espera_conexion_bajada,
+        tiempo_promedio_espera,
+        max_tiempo_ejecucion,
+        tiempo_adicional_parada,
+        min_hora,
+        max_hora,
+      },
+    });
+
+    res.json(parametrosActualizados);
+  } catch (error) {
+    console.error('Error al actualizar parámetros del modelo:', error);
+    res.status(500).json({ error: 'Error al actualizar los parámetros del turno' });
+  }
+}
 
 
 module.exports = {
@@ -655,7 +719,6 @@ module.exports = {
   eliminarTurno,
   importarTrabajadoresAlTurno,
   asignarAvionesATurno,
-  crearRestriccionTurno,
   optimizarTurno,
   obtenerAsignacionesDeTurno,
   obtenerHistorialDeTurno,
@@ -663,5 +726,7 @@ module.exports = {
   agregarCapacidadTurno,
   obtenerCapacidadTurno,
   editarCapacidadTurno,
-  eliminarCapacidadTurno
+  eliminarCapacidadTurno,
+  obtenerParametrosModelo,
+  actualizarParametrosModeloTurno,
 };
