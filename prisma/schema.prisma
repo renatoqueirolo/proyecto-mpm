@@ -47,16 +47,9 @@ model Turno {
   trabajadoresTurno  TrabajadorTurno[]
   busTurno           BusTurno[]
   planeTurno         PlaneTurno[]
-  restricciones      RestriccionTurno[]
+  parametrosModelo      ParametrosModeloTurno?
   historialAsignacion HistorialAsignacion[]
   CapacidadTurno     CapacidadTurno[]
-  espera_conexion_subida   Int    @default(180)
-  espera_conexion_bajada   Int    @default(10)
-  tiempo_promedio_espera   Float    @default(0)
-  max_tiempo_ejecucion     Int      @default(120)
-  tiempo_adicional_parada  Int      @default(30)
-  min_hora                 Int      @default(800)
-  max_hora                 Int      @default(2000)
 }
 
 model TrabajadorTurno {
@@ -98,6 +91,8 @@ model CapacidadTurno {
   region          String  
 
   turno           Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+
+  @@unique([turnoId, region, capacidad], name: "turnoId_region_capacidad")
 }
 model Plane {
   id        String          @id @default(cuid())
@@ -143,12 +138,16 @@ model AssignmentPlane {
   planeTurno       PlaneTurno      @relation(fields: [planeTurnoId], references: [id], onDelete: Cascade)
 }
 
-model RestriccionTurno {
+model ParametrosModeloTurno {
   id          String   @id @default(cuid())
-  turnoId     String
-  tipo        String
-  valor       String
-  descripcion String?
+  turnoId     String   @unique
+  espera_conexion_subida   Int    @default(180)
+  espera_conexion_bajada   Int    @default(10)
+  tiempo_promedio_espera   Float    @default(0)
+  max_tiempo_ejecucion     Int      @default(120)
+  tiempo_adicional_parada  Int      @default(30)
+  min_hora                 Int      @default(800)
+  max_hora                 Int      @default(2000)
 
   turno       Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
 }

@@ -12,7 +12,6 @@ const {
   eliminarTurno,
   importarTrabajadoresAlTurno,
   asignarAvionesATurno,
-  crearRestriccionTurno,
   optimizarTurno,
   obtenerAsignacionesDeTurno,
   obtenerHistorialDeTurno,
@@ -21,6 +20,8 @@ const {
   obtenerCapacidadTurno,
   editarCapacidadTurno,
   eliminarCapacidadTurno,
+  obtenerParametrosModelo,
+  actualizarParametrosModeloTurno,
 } = require('../../controllers/turno/turno.controller');
 
 /**
@@ -229,38 +230,6 @@ router.post('/:id/planes', asignarAvionesATurno);
 
 /**
  * @swagger
- * /turnos/{id}/restricciones:
- *   post:
- *     summary: Crear una restricción para un turno
- *     tags: [Turnos]
- *     parameters:
- *       - name: id
- *         in: path
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [tipo, valor]
- *             properties:
- *               tipo:
- *                 type: string
- *               valor:
- *                 type: string
- *               descripcion:
- *                 type: string
- *     responses:
- *       201:
- *         description: Restricción creada
- */
-router.post('/:id/restricciones', crearRestriccionTurno);
-
-/**
- * @swagger
  * /turnos/{id}/optimizar:
  *   post:
  *     summary: Ejecutar el modelo de optimización
@@ -370,5 +339,69 @@ router.get('/:id/asignaciones', obtenerAsignacionesDeTurno);
 router.get('/:id/historial', obtenerHistorialDeTurno);
 
 router.get('/:id/exportar', exportarAsignaciones);
+
+
+/**
+ * @swagger
+ * /turnos/{id}/parametros:
+ *   get:
+ *     summary: Obtener parámetros del modelo de optimización
+ *     tags: [Turnos]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Parámetros encontrados
+ *       404:
+ *        description: No encontrado
+ */
+router.get('/:id/parametros', obtenerParametrosModelo);
+
+/**
+ * @swagger
+ * /turnos/{id}/parametros:
+ *   put:
+ *     summary: Actualizar parámetros del modelo de optimización
+ *     tags: [Turnos]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *              espera_conexion_subida:
+ *                type: integer
+ *                description: Tiempo de espera para la conexión de subida
+ *              espera_conexion_bajada:
+ *                type: integer
+ *                description: Tiempo de espera para la conexión de bajada
+ *              tiempo_promedio_espera:
+ *                type: integer
+ *                description: Tiempo promedio de espera
+ *              max_tiempo_ejecucion:
+ *                type: integer
+ *                description: Tiempo máximo de ejecución
+ *              tiempo_adicional_parada:
+ *                type: integer
+ *                description: Tiempo adicional de parada
+ *              min_hora:
+ *                type: string
+ *                description: Hora mínima de operación
+ *              max_hora:
+ *                type: string
+ *                description: Hora máxima de operación
+ */
+router.put('/:id/parametros', actualizarParametrosModeloTurno);
 
 module.exports = router;
