@@ -531,112 +531,261 @@ async function obtenerHistorialDeTurno(req, res) {
 
 async function exportarAsignaciones(req, res) {
   const { id } = req.params;
-  const getHora = (date) => {
-    const d = new Date(date);
-    return d.toISOString().substring(11, 16); // "HH:MM"
-  };
+  const nombreArchivo = (req.query.nombre) || `asignaciones_turno_${id}`;
+
+  const getHora = (date) => new Date(date).toISOString().substring(11, 16);
 
   try {
+    /* === 1. Carga de datos ============================================ */
     const turno = await prisma.turno.findUnique({
       where: { id },
       include: {
-        trabajadoresTurno: {
-          include: {
-            trabajador: true,
-          },
-        },
-        planeTurno: {
-          include: {
-            plane: true,
-          },
-        },
-        busTurno: true,
+        trabajadoresTurno: { include: { trabajador: true } },
+        planeTurno: { include: { plane: true } },
+        busTurno:  true,
       },
     });
 
-    const assignmentBuses = await prisma.assignmentBus.findMany({
-      where: {
-        busTurno: {
-          turnoId: id,
-        },
-      },
-      include: {
-        busTurno: true,
-      },
+    const [assignmentBuses, assignmentPlanes] = await Promise.all([
+      prisma.assignmentBus.findMany({
+        where: { busTurno: { turnoId: id } },
+        include: { busTurno: true },
+      }),
+      prisma.assignmentPlane.findMany({
+        where: { planeTurno: { turnoId: id } },
+        include: { planeTurno: { include: { plane: true } } },
+      }),
+    ]);
+
+    /* === 2. Mapas rápidos ============================================= */
+    const busMap   = Object.fromEntries(assignmentBuses .map(a => [a.trabajadorTurnoId, a.busTurno]));
+    const planeMap = Object.fromEntries(assignmentPlanes.map(a => [a.trabajadorTurnoId, a.planeTurno]));
+
+    /* === 3. Workbook ================================================== */
+    const wb = new ExcelJS.Workbook();
+
+    /******** Hoja 1: Resumen global ************************************/
+    const resumen = wb.addWorksheet("Resumen");
+    const totalTrab   = turno.trabajadoresTurno.length;
+    const totalBuses  = new Set(assignmentBuses.map(a => a.busTurnoId)).size;
+    const totalVuelos = new Set(assignmentPlanes.map(a => a.planeTurnoId)).size;
+    const ocupacionPorBus = turno.busTurno
+      .map(b => {
+        const asignados = assignmentBuses.filter(a => a.busTurnoId === b.id).length;
+        return {
+          asignados,
+          capacidad: b.capacidad,
+          ocupacion: b.capacidad ? asignados / b.capacidad : 0,
+        };
+      })
+      .filter(b => b.asignados > 0); // ← solo buses usados
+
+    const promedioOcupacionBus = ocupacionPorBus.length > 0
+      ? ocupacionPorBus.reduce((a, b) => a + b.ocupacion, 0) / ocupacionPorBus.length
+      : 0;
+    const ocupacionPorVuelo = turno.planeTurno
+      .map(p => {
+        const asignados = assignmentPlanes.filter(a => a.planeTurnoId === p.id).length;
+        const capacidad = p.plane?.capacidad ?? p.capacidad; // fallback
+        return {
+          asignados,
+          capacidad,
+          ocupacion: capacidad ? asignados / capacidad : 0,
+        };
+      })
+      .filter(p => p.asignados > 0); // ← solo vuelos usados
+
+    const promedioOcupacionVuelo = ocupacionPorVuelo.length > 0
+      ? ocupacionPorVuelo.reduce((a, b) => a + b.ocupacion, 0) / ocupacionPorVuelo.length
+      : 0;
+
+
+    resumen.addRows([
+      ["KPI", "Valor"],
+      ["Trabajadores", totalTrab],
+      ["Buses utilizados", totalBuses],
+      ["Vuelos utilizados", totalVuelos],
+      ["Ocupación media buses (%)",
+        (promedioOcupacionBus * 100).toFixed(1)], // ej. si guardas capacidad en busTurno
+      ["Ocupación media vuelos (%)",
+        (promedioOcupacionVuelo * 100).toFixed(1)],
+    ]);
+    resumen.columns.forEach(c => (c.width = 26));
+    resumen.getRow(1).font = { bold: true };
+
+    const porRegionYTipo = turno.trabajadoresTurno.reduce((acc, t) => {
+      const region = t.region || "Sin región";
+      const tipo = t.subida ? "Subida" : "Bajada";
+      const key = `${region}_Región_` + tipo;
+      acc[key] = acc[key] || [];
+      acc[key].push(t);
+      return acc;
+    }, {});
+
+    Object.entries(porRegionYTipo).forEach(([regionTipo, trabajadores]) => {
+      const subida = regionTipo.includes("_Subida");
+
+      const ws = wb.addWorksheet(regionTipo);
+
+      // 🧭 Columnas según tipo
+      ws.columns = subida
+        ? [
+            { header: "Nombre",         key: "nombre",  width: 25 },
+            { header: "RUT",            key: "rut",     width: 15 },
+            { header: "Comuna salida",  key: "origen",  width: 20 },
+            { header: "Salida bus",     key: "sal_bus", width: 12 },
+            { header: "Llegada bus",    key: "leg_bus", width: 12 },
+            { header: "Aeropuerto",     key: "aerop",   width: 20 },
+            { header: "Salida vuelo",   key: "sal_vue", width: 12 },
+            { header: "Llegada vuelo",  key: "leg_vue", width: 12 },
+            { header: "Comuna destino", key: "destino", width: 20 },
+            { header: "T. total (h)",   key: "ttotal",  width: 12 },
+          ]
+        : [
+            { header: "Nombre",         key: "nombre",  width: 25 },
+            { header: "RUT",            key: "rut",     width: 15 },
+            { header: "Comuna salida",  key: "origen",  width: 20 },
+            { header: "Salida vuelo",   key: "sal_vue", width: 12 },
+            { header: "Llegada vuelo",  key: "leg_vue", width: 12 },
+            { header: "Aeropuerto",     key: "aerop",   width: 20 },
+            { header: "Salida bus",     key: "sal_bus", width: 12 },
+            { header: "Llegada bus",    key: "leg_bus", width: 12 },
+            { header: "Comuna destino", key: "destino", width: 20 },
+            { header: "T. total (h)",   key: "ttotal",  width: 12 },
+          ];
+
+      trabajadores.forEach(tt => {
+        const bus   = busMap[tt.id];
+        const vuelo = planeMap[tt.id];
+        try {
+          const comunasOrigen  = JSON.parse(bus.comunas_origen);
+          const comunasDestino = JSON.parse(bus.comunas_destino);
+          origen  = Array.isArray(comunasOrigen)  ? comunasOrigen.join(", ")  : comunasOrigen;
+          destino = Array.isArray(comunasDestino) ? comunasDestino.join(", ") : comunasDestino;
+        } catch {
+          origen = bus.comunas_origen;
+          destino = bus.comunas_destino;
+        }
+        
+        const origen_bus     = tt.acercamiento ?? tt.origen;
+        const destino_bus    = subida ? tt.origen : tt.acercamiento;
+        const origen_vuelo   = vuelo?.plane?.ciudad_origen ?? "";
+        const destino_vuelo  = vuelo?.plane?.ciudad_destino ?? "";
+
+        let tTotalHr = "";
+        if (bus && vuelo) {
+          const salida = new Date(subida ? bus.horario_salida : vuelo.horario_salida);
+          const llegada = new Date(subida ? vuelo.horario_llegada : bus.horario_llegada);
+          tTotalHr = ((llegada.getTime() - salida.getTime()) / 36e5).toFixed(1);
+        }
+
+        // 🔀 Datos según tipo
+        const row = subida
+          ? {
+              nombre:  tt.trabajador.nombreCompleto,
+              rut:     tt.trabajador.rut,
+              origen:  origen_bus,
+              sal_bus: bus   ? getHora(bus.horario_salida) : "",
+              leg_bus: bus   ? getHora(bus.horario_llegada) : "",
+              aerop:   origen_vuelo,
+              sal_vue: vuelo ? getHora(vuelo.horario_salida) : "",
+              leg_vue: vuelo ? getHora(vuelo.horario_llegada) : "",
+              destino: destino_vuelo,
+              ttotal:  tTotalHr,
+            }
+          : {
+              nombre:  tt.trabajador.nombreCompleto,
+              rut:     tt.trabajador.rut,
+              origen:  origen_vuelo,
+              aerop:   destino_vuelo,
+              sal_vue: vuelo ? getHora(vuelo.horario_salida) : "",
+              leg_vue: vuelo ? getHora(vuelo.horario_llegada) : "",
+              sal_bus: bus   ? getHora(bus.horario_salida) : "",
+              leg_bus: bus   ? getHora(bus.horario_llegada) : "",
+              destino: destino_bus,
+              ttotal:  tTotalHr,
+            };
+
+        ws.addRow(row);
+      });
+
+      ws.getRow(1).font = { bold: true };
     });
 
-    const assignmentPlanes = await prisma.assignmentPlane.findMany({
-      where: {
-        planeTurno: {
-          turnoId: id,
-        },
-      },
-      include: {
-        planeTurno: true,
-      },
-    });
 
-    // Crear mapas de asignaciones por trabajadorTurnoId
-    const busMap = {};
-    const planeMap = {};
-
-    assignmentBuses.forEach(a => {
-      busMap[a.trabajadorTurnoId] = a.busTurno;
-    });
-
-    assignmentPlanes.forEach(a => {
-      planeMap[a.trabajadorTurnoId] = a.planeTurno;
-    });
-
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet('Asignaciones');
-
-    sheet.columns = [
-      { header: 'Nombre', key: 'nombre', width: 25 },
-      { header: 'RUT', key: 'rut', width: 15 },
-      { header: 'Subida/Bajada', key: 'subida', width: 15 },
-      { header: 'Origen', key: 'origen', width: 20 },
-      { header: 'Destino', key: 'destino', width: 20 },
-      { header: 'Hora salida bus', key: 'salida_bus', width: 15 },
-      { header: 'Hora llegada bus', key: 'llegada_bus', width: 15 },
-      { header: 'Hora salida vuelo', key: 'salida_vuelo', width: 15 },
-      { header: 'Hora llegada vuelo', key: 'llegada_vuelo', width: 15 },
+    /******** Hoja itinerarios buses ************************************/
+    const wsBuses = wb.addWorksheet("Itinerarios buses");
+    wsBuses.columns = [
+      { header: "Bus ID",     key: "id",   width: 20 },
+      { header: "Capacidad",  key: "cap",  width: 12 },
+      { header: "Ocupación",  key: "occ",  width: 12 },
+      { header: "Ruta",       key: "ruta", width: 50 },
     ];
 
-    for (const tt of turno.trabajadoresTurno) {
-      const bus = busMap[tt.id];
-      const vuelo = planeMap[tt.id];
+    turno.busTurno.forEach(b => {
+      const occ = assignmentBuses.filter(a => a.busTurnoId === b.id).length;
+      if (occ == 0) return; // solo buses usados
+      let origen = "";
+      let destino = "";
 
-      const subida = tt.subida;
-      const acercamiento = tt.acercamiento ?? '';
-      const region = tt.region ?? '';
-      const origen = subida ? acercamiento : tt.origen;
-      const destino = subida ? tt.destino : acercamiento;
+      try {
+        const comunasOrigen  = JSON.parse(b.comunas_origen);
+        const comunasDestino = JSON.parse(b.comunas_destino);
+        origen  = Array.isArray(comunasOrigen)  ? comunasOrigen.join(", ")  : comunasOrigen;
+        destino = Array.isArray(comunasDestino) ? comunasDestino.join(", ") : comunasDestino;
+      } catch {
+        origen = b.comunas_origen;
+        destino = b.comunas_destino;
+      }
 
-      sheet.addRow({
-        nombre: tt.trabajador.nombreCompleto,
-        rut: tt.trabajador.rut,
-        subida: subida ? 'Subida' : 'Bajada',
-        origen,
-        destino,
-        region,
-        salida_bus: bus ? getHora(bus.horario_salida) : '',
-        llegada_bus: bus ? getHora(bus.horario_llegada) : '',
-        salida_vuelo: vuelo ? vuelo.horario_salida : '',
-        llegada_vuelo: vuelo ? vuelo.horario_llegada : '',
+      wsBuses.addRow({
+        id:  b.id,
+        cap: b.capacidad,
+        occ,
+        ruta: `${origen} ➔ ${destino} (${getHora(b.horario_salida)}-${getHora(b.horario_llegada)})`,
       });
-    }
+    });
 
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=asignaciones_turno_${id}.xlsx`);
+    wsBuses.getRow(1).font = { bold: true };
 
-    await workbook.xlsx.write(res);
+
+    /******** Hoja itinerarios vuelos ***********************************/
+    const wsVuelos = wb.addWorksheet("Itinerarios vuelos");
+    wsVuelos.columns = [
+      { header: "Vuelo ID",   key: "id",   width: 20 },
+      { header: "Capacidad",  key: "cap",  width: 12 },
+      { header: "Ocupación",  key: "occ",  width: 12 },
+      { header: "Ruta",       key: "ruta", width: 50 },
+    ];
+
+    turno.planeTurno.forEach(p => {
+      const occ = assignmentPlanes.filter(a => a.planeTurnoId === p.id).length;
+      if (occ == 0) return; // solo vuelos usados
+      wsVuelos.addRow({
+        id:  p.id,
+        cap: p.capacidad, // ← esto es la capacidad en PlaneTurno (no Plane)
+        occ,
+        ruta: `${p.plane?.ciudad_origen} ➔ ${p.plane?.ciudad_destino} (${getHora(p.horario_salida)}-${getHora(p.horario_llegada)})`,
+      });
+    });
+
+    wsVuelos.getRow(1).font = { bold: true };
+
+
+    /* === 4. Envío ===================================================== */
+    res.setHeader("Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition",
+      `attachment; filename=${nombreArchivo}.xlsx`);
+
+    await wb.xlsx.write(res);
     res.end();
-  } catch (error) {
-    console.error('Error exportando asignaciones:', error);
-    res.status(500).json({ error: 'Error al exportar asignaciones' });
+  } catch (err) {
+    console.error("Error exportando asignaciones:", err);
+    res.status(500).json({ error: "Error al exportar asignaciones" });
   }
 }
+
 
 async function obtenerParametrosModelo(req, res) {
   try {

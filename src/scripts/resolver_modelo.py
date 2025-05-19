@@ -103,18 +103,24 @@ vuelos = df_planes["plane_turno_id"].tolist()
 CB = df_buses.set_index("id")["capacidad"].to_dict()
 CV = df_planes.set_index("plane_turno_id")["capacidad"].to_dict()
 
-#Parametrps modificables
-cursor.execute('''
-    SELECT "fecha", 
-           "min_hora", 
-           "max_hora", 
-           "espera_conexion_subida", 
-           "espera_conexion_bajada", 
-           "max_tiempo_ejecucion",
-           "tiempo_adicional_parada"
-    FROM "Turno" 
-    WHERE "id" = %s
-''', (turno_id,))
+#Parametros modificables
+cursor.execute(
+    '''
+    SELECT  t."fecha",
+            p."min_hora",
+            p."max_hora",
+            p."espera_conexion_subida",
+            p."espera_conexion_bajada",
+            p."max_tiempo_ejecucion",
+            p."tiempo_adicional_parada"
+    FROM    "Turno"                AS t
+    JOIN    "ParametrosModeloTurno" AS p
+           ON p."turnoId" = t."id"
+    WHERE   t."id" = %s
+    ''',
+    (turno_id,)
+)
+print("Revisión status: OK")
 
 row = cursor.fetchone()
 if not row:
@@ -306,12 +312,15 @@ if status in [cp_model.FEASIBLE, cp_model.OPTIMAL]:
         print("No hay trabajadores fuera de la Región Metropolitana (Región 13)")
         print("Espera Promedio:", espera_promedio)
 
-    # Guardar en la tabla Turno
-    cursor.execute('''
-        UPDATE "Turno"
-        SET "tiempo_promedio_espera" = %s
-        WHERE id = %s
-    ''', (espera_promedio, turno_id))
+    # Guardar en ParametrosModeloTurno
+    cursor.execute(
+        '''
+        UPDATE "ParametrosModeloTurno"
+        SET    "tiempo_promedio_espera" = %s
+        WHERE  "turnoId" = %s
+        ''',
+        (espera_promedio, turno_id)
+    )
     conn.commit()
 
 else:
