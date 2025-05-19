@@ -8,3 +8,4 @@ SQLAlchemy
 XlsxWriter
 fake-useragent
 requests
+pdfmake
