@@ -15,7 +15,8 @@ const {
   optimizarTurno,
   obtenerAsignacionesDeTurno,
   obtenerHistorialDeTurno,
-  exportarAsignaciones,
+  exportarAsignacionesExcel,
+  exportarAsignacionesPdf,
   agregarCapacidadTurno,
   obtenerCapacidadTurno,
   editarCapacidadTurno,
@@ -338,7 +339,10 @@ router.get('/:id/asignaciones', obtenerAsignacionesDeTurno);
  */
 router.get('/:id/historial', obtenerHistorialDeTurno);
 
-router.get('/:id/exportar', exportarAsignaciones);
+router.get('/:id/exportar_excel', exportarAsignacionesExcel);
+
+router.get('/:id/exportar_pdf', exportarAsignacionesPdf);
+
 
 
 /**
