@@ -103,12 +103,27 @@ vuelos = df_planes["plane_turno_id"].tolist()
 CB = df_buses.set_index("id")["capacidad"].to_dict()
 CV = df_planes.set_index("plane_turno_id")["capacidad"].to_dict()
 
-cursor.execute('SELECT "fecha" FROM "Turno" WHERE "id" = %s', (turno_id,))
+#Parametrps modificables
+cursor.execute('''
+    SELECT "fecha", 
+           "min_hora", 
+           "max_hora", 
+           "espera_conexion_subida", 
+           "espera_conexion_bajada", 
+           "max_tiempo_ejecucion",
+           "tiempo_adicional_parada"
+    FROM "Turno" 
+    WHERE "id" = %s
+''', (turno_id,))
+
 row = cursor.fetchone()
 if not row:
     print(f"No se encontró el turno con ID {turno_id}")
     exit()
-fecha_turno = row[0]
+
+fecha_turno, min_hora, max_hora, espera_conexion_subida, espera_conexion_bajada, max_tiempo_ejecucion, tiempo_adicional_parada = row
+
+tiempo_trayecto_bus = 60 # revisar
 
 def datetime_to_minutos(horario_dt: datetime, fecha_base: datetime):
     minutos = horario_dt.hour * 60 + horario_dt.minute
@@ -136,15 +151,6 @@ destino_planes = df_planes.set_index("plane_turno_id")["ciudad_destino"].str.upp
 # Modelo OR-Tools
 # -------------------------
 model = cp_model.CpModel()
-
-#Parametros
-min_hora = 800
-max_hora = 2000
-espera_conexion_subida = 180
-espera_conexion_bajada = 10
-tiempo_trayecto_bus = 60
-tiempo_adicional_parada = 30
-max_tiempo_ejecucion = 200 #segundos
 
 #Restricciones y Variables
 x = {}
@@ -293,10 +299,20 @@ if status in [cp_model.FEASIBLE, cp_model.OPTIMAL]:
     print("✅ Solución encontrada. Valor objetivo:", solver.ObjectiveValue())
     trabajadores_no_rm = [t for t in trabajadores if region_trabajadores[t] != 13]
     if trabajadores_no_rm:
-        print("Espera Promedio:", solver.ObjectiveValue() / len(trabajadores_no_rm))
+        espera_promedio = round(solver.ObjectiveValue() / len(trabajadores_no_rm))
+        print("Espera Promedio:", espera_promedio)
     else:
+        espera_promedio = 0
         print("No hay trabajadores fuera de la Región Metropolitana (Región 13)")
-        print("Espera Promedio:", solver.ObjectiveValue())
+        print("Espera Promedio:", espera_promedio)
+
+    # Guardar en la tabla Turno
+    cursor.execute('''
+        UPDATE "Turno"
+        SET "tiempo_promedio_espera" = %s
+        WHERE id = %s
+    ''', (espera_promedio, turno_id))
+    conn.commit()
 
 else:
     print("❌ No se encontró solución.")
