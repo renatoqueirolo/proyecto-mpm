@@ -176,24 +176,65 @@ async function editarFechaTurno(req, res) {
     const { id } = req.params;
     const { fecha } = req.body;
 
-    const fechaValida = new Date(fecha);
-    if (isNaN(fechaValida)) {
+    const nuevaFecha = new Date(fecha);
+    if (isNaN(nuevaFecha)) {
       return res.status(400).json({ error: "Fecha inválida" });
     }
 
-    await prisma.turno.update({
+    const turnoExistente = await prisma.turno.findUnique({
       where: { id },
-      data: {
-        fecha: fechaValida,
-      },
+      select: { fecha: true },
     });
 
-    res.status(204).send();
+    if (!turnoExistente) {
+      return res.status(404).json({ error: "Turno no encontrado" });
+    }
+
+    const fechaOriginal = new Date(turnoExistente.fecha);
+    const diffMs = nuevaFecha.getTime() - fechaOriginal.getTime();
+    const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24)); // diferencia en días
+
+    // Si no hay cambio en días, no es necesario actualizar planes
+    if (diffDias === 0) {
+      return res.status(200).json({ message: "Fecha sin cambios" });
+    }
+
+    // 1. Actualizar la fecha del turno
+    await prisma.turno.update({
+      where: { id },
+      data: { fecha: nuevaFecha },
+    });
+
+    // 2. Obtener planesTurno asociados
+    const planes = await prisma.planeTurno.findMany({
+      where: { turnoId: id },
+      select: {
+        id: true,
+        horario_salida: true,
+        horario_llegada: true,
+      }
+    });
+
+    const actualizaciones = planes.map(p =>
+      prisma.planeTurno.update({
+        where: { id: p.id },
+        data: {
+          horario_salida: new Date(new Date(p.horario_salida).getTime() + diffDias * 24 * 60 * 60 * 1000),
+          horario_llegada: new Date(new Date(p.horario_llegada).getTime() + diffDias * 24 * 60 * 60 * 1000),
+        },
+      })
+    );
+
+    await Promise.all(actualizaciones);
+
+    res.status(200).json({ message: `Fecha del turno actualizada y planes ajustados en ${diffDias} día(s)` });
   } catch (error) {
     console.error("Error al editar turno:", error);
     res.status(500).json({ error: "Error al editar turno" });
   }
 }
+
+
 async function obtenerCapacidadTurno(req, res) {
   try {
     const { id } = req.params;
