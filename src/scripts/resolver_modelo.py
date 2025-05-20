@@ -45,6 +45,14 @@ df_trabajadores = pd.read_sql(f'''
     WHERE TT."turnoId" = '{turno_id}';
 ''', engine)
 
+df_trabajadores_con_avion = pd.read_sql(f'''
+    SELECT TT.id AS trabajador_id, TT.subida, TT.origen, TT.destino, TT.acercamiento, TT.region, T.rut
+    FROM "AssignmentPlane" AP
+    JOIN "TrabajadorTurno" TT ON AP."trabajadorTurnoId" = TT.id
+    JOIN "Trabajador" T ON TT."trabajadorId" = T.id
+    WHERE TT."turnoId" = '{turno_id}';
+''', engine)
+print(f"Trabajadores con avión: {df_trabajadores_con_avion}")
 df_buses = pd.read_sql(f'''
     SELECT *
     FROM "BusTurno"
@@ -56,6 +64,16 @@ df_planes = pd.read_sql(f'''
     FROM "PlaneTurno" PT
     JOIN "Plane" P ON PT."planeId" = P."id"
     WHERE PT."turnoId" = '{turno_id}';
+''', engine)
+
+df_capacidad_usada_aviones = pd.read_sql(f'''
+    SELECT 
+        AP."planeTurnoId",
+        COUNT(*) AS capacidad_usada
+    FROM "AssignmentPlane" AP
+    JOIN "TrabajadorTurno" TT ON AP."trabajadorTurnoId" = TT.id
+    WHERE TT."turnoId" = '{turno_id}'
+    GROUP BY AP."planeTurnoId";
 ''', engine)
 
 # -------------------------
@@ -76,6 +94,10 @@ df_trabajadores["use_plane"] = df_trabajadores["region"].apply(lambda r: 0 if r 
 # use_bus: 1 para todas excepto RM (13), que es 0
 df_trabajadores["use_bus"] = df_trabajadores["region"].apply(lambda r: 0 if r == 13 else 1)
 
+trabajadores_con_avion_ids = set(df_trabajadores_con_avion["trabajador_id"])
+# Sobrescribimos a 0 para quienes tienen avión asignado
+df_trabajadores.loc[df_trabajadores["trabajador_id"].isin(trabajadores_con_avion_ids), "use_plane"] = 0
+
 # -------------------------
 # Parámetros
 # -------------------------
@@ -86,12 +108,17 @@ origen_trabajadores = df_trabajadores.set_index("trabajador_id")["origen"].to_di
 region_trabajadores = df_trabajadores.set_index("trabajador_id")["region"].to_dict()
 use_plane_trabajadores = df_trabajadores.set_index("trabajador_id")["use_plane"].to_dict()
 use_bus_trabajadores = df_trabajadores.set_index("trabajador_id")["use_bus"].to_dict()
+usadas_dict = df_capacidad_usada_aviones.set_index("planeTurnoId")["capacidad_usada"].to_dict()
 
 buses = df_buses["id"].tolist()
 vuelos = df_planes["plane_turno_id"].tolist()
 CB = df_buses.set_index("id")["capacidad"].to_dict()
-CV = df_planes.set_index("plane_turno_id")["capacidad"].to_dict()
-
+CVtotal = df_planes.set_index("plane_turno_id")["capacidad"].to_dict()
+CV = {
+    plane_id: CVtotal.get(plane_id, 0) - usadas_dict.get(plane_id, 0)
+    for plane_id in CVtotal
+}
+print(CV)
 def hora_str_a_minutos(hora_str):
     h, m = map(int, hora_str.split(":"))
     return h * 60 + m
@@ -226,7 +253,7 @@ print("🔍 Total trabajadores:", len(trabajadores))
 print("🔍 Total buses:", len(buses))
 print("🔍 Total vuelos:", len(vuelos))
 print("🔍 Capacidad total buses:", sum(CB.values()))
-print("🔍 Capacidad total vuelos:", sum(CV.values()))
+print("🔍 Capacidad total vuelos:", sum(CVtotal.values()))
 
 # -------------------------
 # Resolver
@@ -245,20 +272,20 @@ else:
     exit()
 
 # Limpiar asignaciones anteriores del turno
-cursor.execute('''
-    DELETE FROM "AssignmentBus"
-    WHERE "busTurnoId" IN (
-        SELECT id FROM "BusTurno" WHERE "turnoId" = %s
-    )
-''', (turno_id,))
+# cursor.execute('''
+#     DELETE FROM "AssignmentBus"
+#     WHERE "busTurnoId" IN (
+#         SELECT id FROM "BusTurno" WHERE "turnoId" = %s
+#     )
+# ''', (turno_id,))
 
-cursor.execute('''
-    DELETE FROM "AssignmentPlane"
-    WHERE "planeTurnoId" IN (
-        SELECT id FROM "PlaneTurno" WHERE "turnoId" = %s
-    )
-''', (turno_id,))
-conn.commit()
+# cursor.execute('''
+#     DELETE FROM "AssignmentPlane"
+#     WHERE "planeTurnoId" IN (
+#         SELECT id FROM "PlaneTurno" WHERE "turnoId" = %s
+#     )
+# ''', (turno_id,))
+# conn.commit()
 
 # Insertar asignaciones de bus
 for t in trabajadores:

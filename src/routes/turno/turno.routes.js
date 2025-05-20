@@ -21,6 +21,7 @@ const {
   obtenerCapacidadTurno,
   editarCapacidadTurno,
   eliminarCapacidadTurno,
+  agregarAsignacionTurno
 } = require('../../controllers/turno/turno.controller');
 
 /**
@@ -350,6 +351,25 @@ router.delete('/:id/capacidad', eliminarCapacidadTurno);
  *         description: Asignaciones encontradas
  */
 router.get('/:id/asignaciones', obtenerAsignacionesDeTurno);
+
+/**
+ * @swagger
+ * /turnos/{id}/asignaciones:
+ *   post:
+ *     summary: Crear una asignacion para un turno
+ *     tags: [Turnos]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       201:
+ *         description: Asignacion creada
+ */
+router.post('/:id/asignaciones', agregarAsignacionTurno);
+
 
 /**
  * @swagger

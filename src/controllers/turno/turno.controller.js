@@ -259,6 +259,27 @@ async function eliminarCapacidadTurno(req, res) {
     res.status(500).json({ error: 'Error al eliminar turno' });
   }
 }
+
+async function agregarAsignacionTurno(req, res) {
+  try {
+    const { id } = req.params;
+    const { planeTurnoId, trabajadorTurnoId } = req.body;
+    console.log("ID de turno:", trabajadorTurnoId);
+    const restriccion = await prisma.assignmentPlane.create({
+      data: {
+        planeTurnoId,
+        trabajadorTurnoId
+      },
+    });
+
+    res.status(201).json(restriccion);
+  } catch (error) {
+        console.error("Error al crear asignacion:", error);
+
+    res.status(500).json({ error: 'Error al crear asignacion' });
+  }
+}
+
 // Eliminar turno
 async function eliminarTurno(req, res) {
   try {
@@ -663,5 +684,6 @@ module.exports = {
   agregarCapacidadTurno,
   obtenerCapacidadTurno,
   editarCapacidadTurno,
-  eliminarCapacidadTurno
+  eliminarCapacidadTurno,
+  agregarAsignacionTurno
 };
