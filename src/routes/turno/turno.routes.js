@@ -23,6 +23,7 @@ const {
   eliminarCapacidadTurno,
   obtenerParametrosModelo,
   actualizarParametrosModeloTurno,
+  eliminarAsignacionesDelTurno,
 } = require('../../controllers/turno/turno.controller');
 
 /**
@@ -407,5 +408,7 @@ router.get('/:id/parametros', obtenerParametrosModelo);
  *                description: Hora máxima de operación
  */
 router.put('/:id/parametros', actualizarParametrosModeloTurno);
+router.delete('/:id/asignaciones', eliminarAsignacionesDelTurno);
+
 
 module.exports = router;

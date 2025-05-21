@@ -555,6 +555,51 @@ async function obtenerAsignacionesDeTurno(req, res) {
   }
 }
 
+async function eliminarAsignacionesDelTurno(req, res) {
+  try {
+    const { id: turnoId } = req.params;
+
+    // 1. Obtener todos los TrabajadorTurno del turno
+    const trabajadoresTurno = await prisma.trabajadorTurno.findMany({
+      where: { turnoId },
+      select: { id: true }
+    });
+
+    const trabajadorTurnoIds = trabajadoresTurno.map(t => t.id);
+
+    if (trabajadorTurnoIds.length === 0) {
+      // Aun así marcamos modeloEjecutado como false
+      await prisma.turno.update({
+        where: { id: turnoId },
+        data: { modeloEjecutado: false },
+      });
+
+      return res.status(200).json({ message: "No hay asignaciones que eliminar, pero el modelo se marcó como no ejecutado." });
+    }
+
+    // 2. Eliminar asignaciones de buses y vuelos asociadas a estos TrabajadorTurno
+    await prisma.assignmentBus.deleteMany({
+      where: { trabajadorTurnoId: { in: trabajadorTurnoIds } }
+    });
+
+    await prisma.assignmentPlane.deleteMany({
+      where: { trabajadorTurnoId: { in: trabajadorTurnoIds } }
+    });
+
+    // 3. Actualizar el turno: modeloEjecutado = false
+    await prisma.turno.update({
+      where: { id: turnoId },
+      data: { modeloEjecutado: false },
+    });
+
+    res.status(200).json({ message: "Asignaciones eliminadas y modelo marcado como no ejecutado." });
+  } catch (error) {
+    console.error("Error al eliminar asignaciones del turno:", error);
+    res.status(500).json({ error: "Error interno al eliminar asignaciones" });
+  }
+}
+
+
 
 // Ver historial de asignaciones del turno
 async function obtenerHistorialDeTurno(req, res) {
@@ -1063,4 +1108,5 @@ module.exports = {
   eliminarCapacidadTurno,
   obtenerParametrosModelo,
   actualizarParametrosModeloTurno,
+  eliminarAsignacionesDelTurno,
 };
