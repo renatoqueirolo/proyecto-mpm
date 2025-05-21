@@ -10,13 +10,52 @@ from uuid import uuid4
 from sqlalchemy import create_engine
 import json
 import argparse
+import openrouteservice
+
+load_dotenv()
+
+ORS_API_KEY = os.getenv("ORS_API_KEY")
+print(f"API Key de ORS: {ORS_API_KEY}")
+ors_client = openrouteservice.Client(key=ORS_API_KEY)
+
+def obtener_coordenadas(comuna):
+    # Puedes mejorar este diccionario con más comunas
+    comunas_coords = {
+        "VIÑA DEL MAR": (-71.5518, -33.0245),
+        "SAN ANTONIO": (-71.6144, -33.5933),
+        "LA CALERA": (-71.0662, -32.7877),
+        "SANTIAGO": (-70.6483, -33.4569),
+        "LOS ANDES": (-70.5982, -32.8332),
+    }
+    return comunas_coords.get(comuna.upper())
+
+def obtener_distancia_y_duracion_ors(origen, destino, hora_salida=None):
+    coord_origen = obtener_coordenadas(origen)
+    coord_destino = obtener_coordenadas(destino)
+    if not coord_origen or not coord_destino:
+        print(f"Coordenadas no encontradas para {origen} o {destino}")
+        return 1000, 60  # valores por defecto
+
+    try:
+        ruta = ors_client.directions(
+            coordinates=[coord_origen, coord_destino],
+            profile='driving-car',
+            format='json'
+        )
+        distancia_km = ruta['routes'][0]['summary']['distance'] / 1000
+        duracion_min = ruta['routes'][0]['summary']['duration'] / 60
+        print(f"Distancia entre {origen} y {destino}: {distancia_km:.2f} km, Duración: {duracion_min:.2f} min")
+        return distancia_km, duracion_min
+    except Exception as e:
+        print(f"Error consultando ORS para {origen} - {destino}: {e}")
+        return 1000, 60
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--turnoId", required=True, help="ID del turno a procesar")
 args = parser.parse_args()
 turno_id = args.turnoId
 
-load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
 conn = psycopg2.connect(DB_URL)
 cursor = conn.cursor()
@@ -59,15 +98,20 @@ comuna_a_region = {
 
 THRESHOLD_DISTANCE = 40
 
+
 def obtener_distancia(comuna1, comuna2):
-    distancias = {
-        ("LA CALERA", "VIÑA DEL MAR"): 15,
-        ("LA CALERA", "SAN ANTONIO"): 50,
-        ("VIÑA DEL MAR", "SAN ANTONIO"): 35,
-    }
-    if comuna1 == comuna2:
-        return 0
-    return distancias.get((comuna1, comuna2)) or distancias.get((comuna2, comuna1)) or 1000
+    distancia_km, _ = obtener_distancia_y_duracion_ors(comuna1, comuna2)
+    return distancia_km
+
+# def obtener_distancia(comuna1, comuna2):
+#     distancias = {
+#         ("LA CALERA", "VIÑA DEL MAR"): 15,
+#         ("LA CALERA", "SAN ANTONIO"): 50,
+#         ("VIÑA DEL MAR", "SAN ANTONIO"): 35,
+#     }
+#     if comuna1 == comuna2:
+#         return 0
+#     return distancias.get((comuna1, comuna2)) or distancias.get((comuna2, comuna1)) or 1000
 
 def asignar_buses_por_comuna(df_filtrado, nombre="SUBIDA"):
     from collections import defaultdict
@@ -206,10 +250,14 @@ for bus in todos_los_buses:
     subida = bus["subida"]
     comunas_origen = bus["comunas"] if subida else ["SANTIAGO"]
     comunas_destino = ["SANTIAGO"] if subida else bus["comunas"]
+    origen = comunas_origen[0]
+    destino = comunas_destino[0]
+    distancia, duracion = obtener_distancia_y_duracion_ors(origen, destino)
+    
 
     hora_base = HB_b[bus_id]
     hora_salida = datetime.combine(fecha_turno.date(), datetime.min.time()) + timedelta(minutes=hora_base)
-    hora_llegada = hora_salida + timedelta(minutes=60)
+    hora_llegada = hora_salida + timedelta(minutes=duracion)
 
     cursor.execute('SELECT COUNT(*) FROM "BusTurno" WHERE "id" = %s', (bus_id,))
     if cursor.fetchone()[0] == 0:
