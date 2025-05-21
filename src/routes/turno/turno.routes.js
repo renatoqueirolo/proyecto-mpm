@@ -21,7 +21,15 @@ const {
   obtenerCapacidadTurno,
   editarCapacidadTurno,
   eliminarCapacidadTurno,
-  agregarAsignacionTurno
+  agregarAsignacionTurno,
+  editarAsignacionTurnoBus,
+  editarAsignacionTurnoPlane,
+  obtenerAsignacionTurnoBus,
+  obtenerAsignacionTurnoPlane,
+  obtenerCompatiblesTurnoBus,
+  obtenerCompatiblesTurnoPlane,
+  intercambioAsignacionTurnoBus,
+  intercambioAsignacionTurnoPlane
 } = require('../../controllers/turno/turno.controller');
 
 /**
@@ -370,6 +378,21 @@ router.get('/:id/asignaciones', obtenerAsignacionesDeTurno);
  */
 router.post('/:id/asignaciones', agregarAsignacionTurno);
 
+router.put('/:id/asignaciones/bus', editarAsignacionTurnoBus);
+
+router.put('/:id/asignaciones/plane', editarAsignacionTurnoPlane);
+
+router.get('/:id/asignaciones/bus/:busTurnoId', obtenerAsignacionTurnoBus);
+
+router.get('/:id/asignaciones/plane/:planeTurnoId', obtenerAsignacionTurnoPlane);
+
+router.get('/:id/asignaciones/bus/compatibles/:trabajadorTurnoId', obtenerCompatiblesTurnoBus);
+
+router.get('/:id/asignaciones/plane/compatibles/:trabajadorTurnoId', obtenerCompatiblesTurnoPlane);
+
+router.put('/:id/asignaciones/bus/intercambio', intercambioAsignacionTurnoBus);
+
+router.put('/:id/asignaciones/plane/intercambio', intercambioAsignacionTurnoPlane);
 
 /**
  * @swagger
