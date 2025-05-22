@@ -24,6 +24,15 @@ const {
   obtenerParametrosModelo,
   actualizarParametrosModeloTurno,
   eliminarAsignacionesDelTurno,
+  agregarAsignacionTurno,
+  editarAsignacionTurnoBus,
+  editarAsignacionTurnoPlane,
+  obtenerAsignacionTurnoBus,
+  obtenerAsignacionTurnoPlane,
+  obtenerCompatiblesTurnoBus,
+  obtenerCompatiblesTurnoPlane,
+  intercambioAsignacionTurnoBus,
+  intercambioAsignacionTurnoPlane
 } = require('../../controllers/turno/turno.controller');
 
 /**
@@ -321,6 +330,40 @@ router.delete('/:id/capacidad', eliminarCapacidadTurno);
  *         description: Asignaciones encontradas
  */
 router.get('/:id/asignaciones', obtenerAsignacionesDeTurno);
+
+/**
+ * @swagger
+ * /turnos/{id}/asignaciones:
+ *   post:
+ *     summary: Crear una asignacion para un turno
+ *     tags: [Turnos]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       201:
+ *         description: Asignacion creada
+ */
+router.post('/:id/asignaciones', agregarAsignacionTurno);
+
+router.put('/:id/asignaciones/bus', editarAsignacionTurnoBus);
+
+router.put('/:id/asignaciones/plane', editarAsignacionTurnoPlane);
+
+router.get('/:id/asignaciones/bus/:busTurnoId', obtenerAsignacionTurnoBus);
+
+router.get('/:id/asignaciones/plane/:planeTurnoId', obtenerAsignacionTurnoPlane);
+
+router.get('/:id/asignaciones/bus/compatibles/:trabajadorTurnoId', obtenerCompatiblesTurnoBus);
+
+router.get('/:id/asignaciones/plane/compatibles/:trabajadorTurnoId', obtenerCompatiblesTurnoPlane);
+
+router.put('/:id/asignaciones/bus/intercambio', intercambioAsignacionTurnoBus);
+
+router.put('/:id/asignaciones/plane/intercambio', intercambioAsignacionTurnoPlane);
 
 /**
  * @swagger

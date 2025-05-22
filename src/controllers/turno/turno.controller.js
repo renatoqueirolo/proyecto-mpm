@@ -308,6 +308,363 @@ async function editarCapacidadTurno(req, res) {
   }
 }
 
+async function editarAsignacionTurnoBus(req, res) {
+  try {
+    const { asignaciones} = req.body;
+    for (const asignacion of asignaciones) {
+      trabajadorTurnoId = asignacion.trabajadorTurnoId;
+      busTurnoId = asignacion.busTurnoId;
+      const asignacion_turno = await prisma.assignmentBus.findFirst({
+      where: { trabajadorTurnoId: trabajadorTurnoId },
+    });
+      await prisma.assignmentBus.update({
+      where: {  id: asignacion_turno.id },
+      data: {
+        busTurnoId: busTurnoId,
+      },
+    })};
+    res.status(204).send();
+  } catch (error) {
+    console.error("Error al editar capacidad:", error);
+    res.status(500).json({ error: "Error al editar asignacion" });
+  }
+}
+
+async function editarAsignacionTurnoPlane(req, res) {
+  try {
+    const { asignaciones} = req.body;
+    for (const asignacion of asignaciones) {
+      trabajadorTurnoId = asignacion.trabajadorTurnoId;
+      planeTurnoId = asignacion.planeTurnoId;
+      const asignacion_turno = await prisma.assignmentPlane.findFirst({
+      where: { trabajadorTurnoId: trabajadorTurnoId },
+    });
+      console.log("asignacion_turno", asignacion_turno);
+      await prisma.assignmentPlane.update({
+      where: {  id: asignacion_turno.id },
+      data: {
+        planeTurnoId: planeTurnoId,
+      },
+    })};
+    res.status(204).send();
+  } catch (error) {
+    console.error("Error al editar capacidad:", error);
+    res.status(500).json({ error: "Error al editar asignacion" });
+  }
+}
+
+async function obtenerAsignacionTurnoBus(req, res) {
+  try {
+    const { busTurnoId } = req.params;
+
+    // 1. Buscar el busTurno con sus datos
+    const busTurno = await prisma.busTurno.findUnique({
+      where: { id: busTurnoId },
+      select: {
+        id: true,
+        comunas_origen: true,
+        comunas_destino: true,
+        turnoId: true
+      }
+    });
+
+    if (!busTurno) {
+      return res.status(404).json({ error: "BusTurno no encontrado" });
+    }
+
+let { comunas_origen, comunas_destino, turnoId } = busTurno;
+comunas_destino = JSON.parse(comunas_destino);
+comunas_origen = JSON.parse(comunas_origen);
+
+    // 2. Obtener trabajadores asignados a ese bus
+    const asignados = await prisma.assignmentBus.findMany({
+  where: { busTurnoId },
+        include: {
+        trabajadorTurno: {
+          include: {
+            trabajador: true
+          }
+        },
+        busTurno: true
+      }
+
+});
+    const subida = comunas_destino.includes("SANTIAGO");
+
+const filtroAcercamiento = subida ? { acercamiento: { in: comunas_origen } } : { acercamiento: { in: comunas_destino } };
+
+
+    // 3. Obtener trabajadores disponibles para asignar 
+const trabajadoresDisponibles = await prisma.trabajadorTurno.findMany({
+  where: {
+    turnoId: turnoId,
+    subida: subida,
+    ...filtroAcercamiento
+  },
+  include: {
+    trabajador: true
+  }
+});
+// 1. Obtener los IDs de los trabajadores ya asignados al bus
+const idsAsignados = new Set(asignados.map(a => a.trabajadorTurno.trabajador.id));
+
+// 2. Filtrar los trabajadores disponibles para que no estén en la lista de asignados
+const trabajadoresFiltrados = trabajadoresDisponibles.filter(t => !idsAsignados.has(t.trabajador.id));
+
+
+    return res.status(200).json({
+      asignados: asignados,
+      trabajadoresDisponibles: trabajadoresFiltrados,
+    });
+
+  } catch (error) {
+    console.error("Error al obtener asignación de turno:", error);
+    res.status(500).json({ error: "Error al obtener asignación de turno" });
+  }
+}
+
+async function obtenerAsignacionTurnoPlane(req, res) {
+  try {
+    const { planeTurnoId , id} = req.params;
+
+    // 1. Buscar el busTurno con sus datos
+    const planeTurno = await prisma.planeTurno.findUnique({
+      where: { id: planeTurnoId },
+      include: {
+        plane: true,
+    }});
+
+    if (!planeTurno) {
+      return res.status(404).json({ error: "PlaneTurno no encontrado" });
+    }
+
+    // 2. Obtener trabajadores asignados a ese avion
+    const asignados = await prisma.assignmentPlane.findMany({
+  where: { planeTurnoId },
+        include: {
+        trabajadorTurno: {
+          include: {
+            trabajador: true
+          }
+        },
+        planeTurno: {
+          include: {
+            plane: true
+        }
+      }
+
+}});
+    const subida = planeTurno.plane.ciudad_origen.includes("Santiago");
+
+const filtroAcercamiento = subida
+  ? { destino: planeTurno.plane.ciudad_destino.toUpperCase() }
+  : { origen: planeTurno.plane.ciudad_origen.toUpperCase() };
+
+    // 3. Obtener trabajadores disponibles para asignar 
+const trabajadoresDisponibles = await prisma.trabajadorTurno.findMany({
+  where: {
+    turnoId: id,
+    subida: subida,
+    ...filtroAcercamiento
+  },
+  include: {
+    trabajador: true
+  }
+});
+// 1. Obtener los IDs de los trabajadores ya asignados al bus
+const idsAsignados = new Set(asignados.map(a => a.trabajadorTurno.trabajador.id));
+
+// 2. Filtrar los trabajadores disponibles para que no estén en la lista de asignados
+const trabajadoresFiltrados = trabajadoresDisponibles.filter(t => !idsAsignados.has(t.trabajador.id));
+
+
+    return res.status(200).json({
+      subida: subida,
+      trabajadoresDisponibles: trabajadoresFiltrados,
+      asignados: asignados,
+    });
+
+  } catch (error) {
+    console.error("Error al obtener asignación de turno:", error);
+    res.status(500).json({ error: "Error al obtener asignación de turno" });
+  }
+} 
+
+
+async function obtenerCompatiblesTurnoBus(req, res) {
+  try {
+    const { trabajadorTurnoId } = req.params;
+
+    console.log("ID de trabajadorTurno:", trabajadorTurnoId);
+
+    // 1. Buscar el trabajadorTurno con sus datos
+    const trabajadorTurno = await prisma.trabajadorTurno.findUnique({
+      where: { id: trabajadorTurnoId },
+      include: { trabajador: true }
+    });
+
+    if (!trabajadorTurno) {
+      return res.status(404).json({ error: "trabajadorTurno no encontrado" });
+    }
+
+    const { subida, turnoId } = trabajadorTurno;
+
+    let origen, destino;
+    if (subida) {
+      origen = trabajadorTurno.acercamiento;
+      destino = trabajadorTurno.origen;
+    } else {
+      origen = trabajadorTurno.destino;
+      destino = trabajadorTurno.acercamiento;
+    }
+
+
+
+
+    const filtroAcercamiento = subida ? { acercamiento: origen } : { acercamiento: destino };
+
+    // 2. Obtener todos los trabajadores disponibles con el mismo turno, sentido y origen
+    const trabajadoresDisponibles = await prisma.trabajadorTurno.findMany({
+      where: {
+        turnoId: turnoId,
+        subida: subida,
+        ...filtroAcercamiento
+      },
+      include: {
+        trabajador: true
+      }
+    });
+
+    const asignacionBus = await prisma.assignmentBus.findFirst({
+      where: { trabajadorTurnoId: trabajadorTurnoId }    });
+    const idBus = asignacionBus.busTurnoId;
+    const asignados = await prisma.assignmentBus.findMany({
+      where: { busTurnoId: idBus },
+      include: {trabajadorTurno: {include: {trabajador: true}}}});
+    // 3. Obtener los IDs de los trabajadores ya asignados al bus
+    const idsAsignados = new Set(asignados.map(a => a.trabajadorTurno.trabajador.id));
+
+    // 4. Filtrar trabajadores:
+    const trabajadoresFiltrados = trabajadoresDisponibles.filter(t => 
+      !idsAsignados.has(t.trabajador.id) && t.id !== trabajadorTurno.id
+    );
+
+    return res.status(200).json({
+      compatibles: trabajadoresFiltrados
+    });
+
+  } catch (error) {
+    console.error("Error al obtener asignación de turno:", error);
+    res.status(500).json({ error: "Error al obtener asignación de turno" });
+  }
+}
+
+async function obtenerCompatiblesTurnoPlane(req, res) {
+  try {
+    const { trabajadorTurnoId } = req.params;
+
+    console.log("ID de trabajadorTurno:", trabajadorTurnoId);
+
+    // 1. Buscar el trabajadorTurno con sus datos
+    const trabajadorTurno = await prisma.trabajadorTurno.findUnique({
+      where: { id: trabajadorTurnoId },
+      include: { trabajador: true }
+    });
+
+    if (!trabajadorTurno) {
+      return res.status(404).json({ error: "trabajadorTurno no encontrado" });
+    }
+
+    const { subida, turnoId } = trabajadorTurno;
+
+    let origen, destino;
+    if (subida) {
+      origen = trabajadorTurno.acercamiento;
+      destino = trabajadorTurno.destino;
+    } else {
+      origen = trabajadorTurno.origen;
+      destino = trabajadorTurno.acercamiento;
+    }
+
+    const filtroAcercamiento = subida ? { destino: destino } : { origen: origen };
+
+    // 2. Obtener todos los trabajadores disponibles con el mismo turno, sentido y origen
+    const trabajadoresDisponibles = await prisma.trabajadorTurno.findMany({
+      where: {
+        turnoId: turnoId,
+        subida: subida,
+        ...filtroAcercamiento
+      },
+      include: {
+        trabajador: true
+      }
+    });
+        const asignacionPlane = await prisma.assignmentPlane.findFirst({
+      where: { trabajadorTurnoId: trabajadorTurnoId }    });
+    console.log("asignacionPlane", asignacionPlane);
+    const planeId = asignacionPlane.planeTurnoId;
+    const asignados = await prisma.assignmentPlane.findMany({
+      where: { planeTurnoId: planeId },
+      include: {trabajadorTurno: {include: {trabajador: true}}}});
+    // 3. Obtener los IDs de los trabajadores ya asignados al bus
+    const idsAsignados = new Set(asignados.map(a => a.trabajadorTurno.trabajador.id));
+
+
+    // 4. Filtrar trabajadores:
+    const trabajadoresFiltrados = trabajadoresDisponibles.filter(t => 
+      !idsAsignados.has(t.trabajador.id) && t.id !== trabajadorTurno.id
+    );
+
+    return res.status(200).json({
+      compatibles: trabajadoresFiltrados
+    });
+
+  } catch (error) {
+    console.error("Error al obtener asignación de turno:", error);
+    res.status(500).json({ error: "Error al obtener asignación de turno" });
+  }
+}
+
+async function intercambioAsignacionTurnoBus(req, res) {
+  try {
+    const { trabajadorTurnoId1, trabajadorTurnoId2} = req.body;
+    asignacioBus1 = await prisma.assignmentBus.findFirst({
+      where: { trabajadorTurnoId: trabajadorTurnoId1 }    });
+    asignacioBus2 = await prisma.assignmentBus.findFirst({
+      where: { trabajadorTurnoId: trabajadorTurnoId2 }    });
+    await prisma.assignmentBus.update({where: { id: asignacioBus1.id },
+      data: {
+        trabajadorTurnoId: trabajadorTurnoId2}})
+    await prisma.assignmentBus.update({where: { id: asignacioBus2.id },
+      data: {
+        trabajadorTurnoId: trabajadorTurnoId1}})
+    res.status(204).send();
+  } catch (error) {
+    console.error("Error al intercambiar:", error);
+    res.status(500).json({ error: "Error al intercambiar" });
+  }
+}
+
+async function intercambioAsignacionTurnoPlane(req, res) {
+  try {
+    const { trabajadorTurnoId1, trabajadorTurnoId2} = req.body;
+    asignacioBus1 = await prisma.assignmentPlane.findFirst({
+      where: { trabajadorTurnoId: trabajadorTurnoId1 }    });
+    asignacioBus2 = await prisma.assignmentPlane.findFirst({
+      where: { trabajadorTurnoId: trabajadorTurnoId2 }    });
+    await prisma.assignmentPlane.update({where: { id: asignacioBus1.id },
+      data: {
+        trabajadorTurnoId: trabajadorTurnoId2}})
+    await prisma.assignmentPlane.update({where: { id: asignacioBus2.id },
+      data: {
+        trabajadorTurnoId: trabajadorTurnoId1}})
+    res.status(204).send();
+  } catch (error) {
+    console.error("Error al intercambiar:", error);
+    res.status(500).json({ error: "Error al intercambiar" });
+  }
+}
+
 async function eliminarCapacidadTurno(req, res) {
   try {
     const {id} = req.body;
@@ -319,6 +676,27 @@ async function eliminarCapacidadTurno(req, res) {
     res.status(500).json({ error: 'Error al eliminar turno' });
   }
 }
+
+async function agregarAsignacionTurno(req, res) {
+  try {
+    const { id } = req.params;
+    const { planeTurnoId, trabajadorTurnoId } = req.body;
+    console.log("ID de turno:", trabajadorTurnoId);
+    const restriccion = await prisma.assignmentPlane.create({
+      data: {
+        planeTurnoId,
+        trabajadorTurnoId
+      },
+    });
+
+    res.status(201).json(restriccion);
+  } catch (error) {
+        console.error("Error al crear asignacion:", error);
+
+    res.status(500).json({ error: 'Error al crear asignacion' });
+  }
+}
+
 // Eliminar turno
 async function eliminarTurno(req, res) {
   try {
@@ -1109,4 +1487,13 @@ module.exports = {
   obtenerParametrosModelo,
   actualizarParametrosModeloTurno,
   eliminarAsignacionesDelTurno,
+  agregarAsignacionTurno,
+  editarAsignacionTurnoBus,
+  editarAsignacionTurnoPlane,
+  obtenerAsignacionTurnoBus,
+  obtenerAsignacionTurnoPlane,
+  obtenerCompatiblesTurnoBus,
+  obtenerCompatiblesTurnoPlane,
+  intercambioAsignacionTurnoBus,
+  intercambioAsignacionTurnoPlane,
 };
