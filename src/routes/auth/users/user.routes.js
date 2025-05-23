@@ -1,7 +1,8 @@
 const express = require('express');
 const {
   login,
-  register
+  register,
+  changePassword
 } = require('../../../controllers/auth/user/auth.controller');
 const {
   userMustBeLogged,
@@ -39,10 +40,11 @@ router.post('/login', login);
  */
 router.post('/signup', register);
 
-// GET /auth/me
 router.get('/me', userMustBeLogged, (req, res) => {
   res.json(req.user); 
 });
+
+router.post("/cambiar-password", userMustBeLogged, changePassword);
 
 
 module.exports = router;

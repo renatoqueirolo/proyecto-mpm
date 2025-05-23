@@ -41,5 +41,18 @@ const login = async (req, res) => {
   }
 };
 
+const changePassword = async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+  const userId = req.user.id;
 
-module.exports = { register, login };
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const ok = await bcrypt.compare(oldPassword, user.password);
+  if (!ok) return res.status(400).send("Contraseña actual incorrecta");
+
+  const newHashed = await bcrypt.hash(newPassword, 10);
+  await prisma.user.update({ where: { id: userId }, data: { password: newHashed } });
+  res.status(200).send("Contraseña actualizada");
+}
+
+
+module.exports = { register, login, changePassword };
