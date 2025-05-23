@@ -819,8 +819,8 @@ const asignarAvionesATurno = async (req, res) => {
 
     const inserts = nuevosAviones.map(avion => {
       const plane = mapaPlanes.get(avion.planeId);
-      const salidaDT = construirFechaHora(fechaTurno, plane.horario_salida);
-      const llegadaDT = construirFechaHora(fechaTurno, plane.horario_llegada);
+      const salidaDT = construirFechaHora(fechaTurno, avion.horario_salida || plane.horario_salida);
+      const llegadaDT = construirFechaHora(fechaTurno, avion.horario_llegada || plane.horario_llegada);
 
       return prisma.planeTurno.create({
         data: {
