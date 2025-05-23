@@ -3,6 +3,9 @@ const {
   login,
   register
 } = require('../../../controllers/auth/user/auth.controller');
+const {
+  userMustBeLogged,
+} = require('../../../middlewares/auth.middleware');
 
 const router = express.Router();
 
@@ -35,5 +38,11 @@ router.post('/login', login);
  *         description: El registro de usuarios no está disponible públicamente       
  */
 router.post('/signup', register);
+
+// GET /auth/me
+router.get('/me', userMustBeLogged, (req, res) => {
+  res.json(req.user); 
+});
+
 
 module.exports = router;

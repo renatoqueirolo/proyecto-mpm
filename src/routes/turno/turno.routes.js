@@ -1,6 +1,7 @@
 
 const express = require('express');
 const router = express.Router();
+const {  userMustBeLogged  } = require('../../middlewares/auth.middleware');
 const {
   crearTurno,
   obtenerTurnos,
@@ -8,7 +9,7 @@ const {
   obtenerTrabajadoresTurno,
   obtenerBusesTurno,
   obtenerAvionesTurno,
-  editarFechaTurno,
+  editarTurno,
   eliminarTurno,
   importarTrabajadoresAlTurno,
   asignarAvionesATurno,
@@ -34,6 +35,8 @@ const {
   intercambioAsignacionTurnoBus,
   intercambioAsignacionTurnoPlane
 } = require('../../controllers/turno/turno.controller');
+
+router.use(userMustBeLogged)
 
 /**
  * @swagger
@@ -106,7 +109,7 @@ router.get('/:id/trabajadores', obtenerTrabajadoresTurno);
 router.get('/:id/aviones', obtenerAvionesTurno);
 router.get('/:id/buses', obtenerBusesTurno);
 
-router.put('/:id', editarFechaTurno);
+router.put('/:id', editarTurno);
 
 
 /**

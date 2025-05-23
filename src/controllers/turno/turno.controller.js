@@ -3,15 +3,19 @@ const { execFile } = require('child_process');
 const path = require('path');
 const PdfPrinter = require('pdfmake');;
 
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient, ShiftType } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 // Crear turno
 async function crearTurno(req, res) {
   try {
-    const { fecha, creadoPorId } = req.body;
-    if (!fecha || !creadoPorId)
+    const { nombre, fecha, creadoPorId, proyecto, tipoTurno } = req.body;
+    if (!fecha || !creadoPorId || !proyecto || !tipoTurno)
       return res.status(400).json({ error: 'Faltan campos requeridos' });
+
+    let tipoTurnoType;
+    if (tipoTurno == "14x14") tipoTurnoType = ShiftType.FOURTEEN_FOURTEEN
+    else if (tipoTurno == "7x7") tipoTurnoType = ShiftType.SEVEN_SEVEN
 
     const creadoPorIdString = creadoPorId.toString();
 
@@ -25,8 +29,11 @@ async function crearTurno(req, res) {
     const resultado = await prisma.$transaction(async (tx) => {
       const turno = await tx.turno.create({
         data: {
+          nombre: nombre,
           fecha: new Date(fecha),
           creadoPorId: creadoPorIdString,
+          proyecto: proyecto,
+          tipoTurno: tipoTurnoType,
           modeloEjecutado: false,
         },
       });
@@ -79,7 +86,13 @@ async function crearTurno(req, res) {
 // Obtener todos los turnos
 async function obtenerTurnos(req, res) {
   try {
+    const { proyectos } = req.user;
     const turnos = await prisma.turno.findMany({
+      where: {
+        proyecto: {
+          in: proyectos, // 👈 Filtra sólo los que puede ver este usuario
+        },
+      },
       orderBy: { fecha: 'desc' },
       include: { 
         trabajadoresTurno: true,
@@ -171,10 +184,10 @@ async function obtenerBusesTurno(req, res) {
 
 
 // Editar fecha turno
-async function editarFechaTurno(req, res) {
+async function editarTurno(req, res) {
   try {
     const { id } = req.params;
-    const { fecha } = req.body;
+    const { nombre, fecha, proyecto, tipoTurno } = req.body;
 
     const nuevaFecha = new Date(fecha);
     if (isNaN(nuevaFecha)) {
@@ -183,7 +196,7 @@ async function editarFechaTurno(req, res) {
 
     const turnoExistente = await prisma.turno.findUnique({
       where: { id },
-      select: { fecha: true },
+      select: { fecha: true, nombre: true, proyecto: true, tipoTurno: true },
     });
 
     if (!turnoExistente) {
@@ -202,7 +215,7 @@ async function editarFechaTurno(req, res) {
     // 1. Actualizar la fecha del turno
     await prisma.turno.update({
       where: { id },
-      data: { fecha: nuevaFecha },
+      data: { fecha: nuevaFecha, nombre: nombre, proyecto: proyecto, tipoTurno: tipoTurno },
     });
 
     // 2. Obtener planesTurno asociados
@@ -1471,7 +1484,7 @@ module.exports = {
   obtenerTrabajadoresTurno,
   obtenerAvionesTurno,
   obtenerBusesTurno,
-  editarFechaTurno,
+  editarTurno,
   eliminarTurno,
   importarTrabajadoresAlTurno,
   asignarAvionesATurno,
