@@ -751,6 +751,47 @@ async function importarTrabajadoresAlTurno(req, res) {
   }
 }
 
+async function agregarTrabajadorATurno(req, res) {
+  try {
+    const { id: turnoId } = req.params;
+    const { rut, nombreCompleto, acercamiento, region, subida, origen, destino } = req.body;
+
+    // Validación básica
+    if (!rut || !nombreCompleto || !acercamiento || !region || !origen || !destino || subida === undefined) {
+      return res.status(400).json({ error: "Faltan campos obligatorios para crear trabajador" });
+    }
+
+    // 1. Verificar si el trabajador ya existe por RUT
+    let trabajador = await prisma.trabajador.findUnique({ where: { rut } });
+
+    // 2. Si no existe, crearlo
+    if (!trabajador) {
+      trabajador = await prisma.trabajador.create({
+        data: { rut, nombreCompleto }
+      });
+    }
+
+    // 3. Crear TrabajadorTurno
+    const trabajadorTurno = await prisma.trabajadorTurno.create({
+      data: {
+        turnoId,
+        trabajadorId: trabajador.id,
+        acercamiento,
+        region,
+        subida,
+        origen,
+        destino,
+      }
+    });
+
+    res.status(201).json({ message: "Trabajador creado y asignado al turno", trabajadorTurno });
+  } catch (error) {
+    console.error("Error al agregar trabajador al turno:", error);
+    res.status(500).json({ error: "Error interno al agregar trabajador al turno" });
+  }
+}
+
+
 // Asingar los aviones de un turno
 const asignarAvionesATurno = async (req, res) => {
   try {
@@ -1496,4 +1537,5 @@ module.exports = {
   obtenerCompatiblesTurnoPlane,
   intercambioAsignacionTurnoBus,
   intercambioAsignacionTurnoPlane,
+  agregarTrabajadorATurno
 };

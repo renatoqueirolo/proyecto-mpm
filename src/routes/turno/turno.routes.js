@@ -32,7 +32,8 @@ const {
   obtenerCompatiblesTurnoBus,
   obtenerCompatiblesTurnoPlane,
   intercambioAsignacionTurnoBus,
-  intercambioAsignacionTurnoPlane
+  intercambioAsignacionTurnoPlane,
+  agregarTrabajadorATurno
 } = require('../../controllers/turno/turno.controller');
 
 /**
@@ -162,6 +163,8 @@ router.delete('/:id', eliminarTurno);
  *         description: Trabajadores importados
  */
 router.post('/:id/trabajadores', importarTrabajadoresAlTurno);
+router.post("/:id/trabajador", agregarTrabajadorATurno);
+
 
 /**
  * @swagger
