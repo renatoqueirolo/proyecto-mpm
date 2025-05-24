@@ -26,6 +26,8 @@ const {
   actualizarParametrosModeloTurno,
   eliminarAsignacionesDelTurno,
   agregarAsignacionTurno,
+  eliminarAsignacionTurno,
+  editarAsignacionTurno,
   editarAsignacionTurnoBus,
   editarAsignacionTurnoPlane,
   obtenerAsignacionTurnoBus,
@@ -351,6 +353,10 @@ router.get('/:id/asignaciones', obtenerAsignacionesDeTurno);
  *         description: Asignacion creada
  */
 router.post('/:id/asignaciones', agregarAsignacionTurno);
+
+router.delete('/:id/asignaciones/:trabajadorTurnoId', eliminarAsignacionTurno)
+
+router.put('/:id/asignaciones/:trabajadorTurnoId', editarAsignacionTurno)
 
 router.put('/:id/asignaciones/bus', editarAsignacionTurnoBus);
 

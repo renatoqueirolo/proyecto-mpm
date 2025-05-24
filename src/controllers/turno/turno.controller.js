@@ -710,6 +710,59 @@ async function agregarAsignacionTurno(req, res) {
   }
 }
 
+async function eliminarAsignacionTurno(req, res) {
+  const { id: turnoId, trabajadorTurnoId } = req.params;
+
+  try {
+    // Buscar los planeTurno del turno
+    const planesDelTurno = await prisma.planeTurno.findMany({
+      where: { turnoId },
+      select: { id: true }
+    });
+
+    const planeTurnoIds = planesDelTurno.map(p => p.id);
+
+    // Eliminar asignaciones del trabajador solo en esos planeTurno
+    await prisma.assignmentPlane.deleteMany({
+      where: {
+        trabajadorTurnoId,
+        planeTurnoId: { in: planeTurnoIds }
+      }
+    });
+
+    res.status(204).send(); // No content
+  } catch (error) {
+    console.error("Error al eliminar asignación:", error);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+}
+
+async function editarAsignacionTurno(req, res) {
+  try {
+    const { turnoId, trabajadorTurnoId } = req.params;
+    const { nuevoPlaneTurnoId } = req.body;
+
+    const plane = await prisma.planeTurno.findUnique({
+      where: { id: nuevoPlaneTurnoId },
+      select: { turnoId: true },
+    });
+
+    if (!plane || plane.turnoId !== turnoId) {
+      return res.status(400).json({ error: "Avión no válido para este turno" });
+    }
+
+    await prisma.assignmentPlane.updateMany({
+      where: { trabajadorTurnoId },
+      data: { planeTurnoId: nuevoPlaneTurnoId },
+    });
+
+    res.status(200).send("Asignación actualizada");
+  } catch (error) {
+    console.error("Error al editar asignación:", error);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+}
+
 // Eliminar turno
 async function eliminarTurno(req, res) {
   try {
@@ -1501,6 +1554,8 @@ module.exports = {
   actualizarParametrosModeloTurno,
   eliminarAsignacionesDelTurno,
   agregarAsignacionTurno,
+  eliminarAsignacionTurno,
+  editarAsignacionTurno,
   editarAsignacionTurnoBus,
   editarAsignacionTurnoPlane,
   obtenerAsignacionTurnoBus,
