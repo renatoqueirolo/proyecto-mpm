@@ -1286,14 +1286,22 @@ async function exportarAsignacionesExcel(req, res) {
       trabajadores.forEach(tt => {
         const bus   = busMap[tt.id];
         const vuelo = planeMap[tt.id];
-        try {
-          const comunasOrigen  = JSON.parse(bus.comunas_origen);
-          const comunasDestino = JSON.parse(bus.comunas_destino);
-          origen  = Array.isArray(comunasOrigen)  ? comunasOrigen.join(", ")  : comunasOrigen;
-          destino = Array.isArray(comunasDestino) ? comunasDestino.join(", ") : comunasDestino;
-        } catch {
-          origen = bus.comunas_origen;
-          destino = bus.comunas_destino;
+        let origen = "";
+        let destino = "";
+
+        if (bus && bus.comunas_origen && bus.comunas_destino) {
+          try {
+            const comunasOrigen  = JSON.parse(bus.comunas_origen);
+            const comunasDestino = JSON.parse(bus.comunas_destino);
+            origen  = Array.isArray(comunasOrigen)  ? comunasOrigen.join(", ")  : comunasOrigen;
+            destino = Array.isArray(comunasDestino) ? comunasDestino.join(", ") : comunasDestino;
+          } catch {
+            origen = bus.comunas_origen;
+            destino = bus.comunas_destino;
+          }
+        } else {
+          origen = "";
+          destino = "";
         }
         
         const origen_bus     = tt.acercamiento ?? tt.origen;
@@ -1357,14 +1365,19 @@ async function exportarAsignacionesExcel(req, res) {
       let origen = "";
       let destino = "";
 
-      try {
-        const comunasOrigen  = JSON.parse(b.comunas_origen);
-        const comunasDestino = JSON.parse(b.comunas_destino);
-        origen  = Array.isArray(comunasOrigen)  ? comunasOrigen.join(", ")  : comunasOrigen;
-        destino = Array.isArray(comunasDestino) ? comunasDestino.join(", ") : comunasDestino;
-      } catch {
-        origen = b.comunas_origen;
-        destino = b.comunas_destino;
+      if (b.comunas_origen && b.comunas_destino) {
+        try {
+          const comunasOrigen  = JSON.parse(b.comunas_origen);
+          const comunasDestino = JSON.parse(b.comunas_destino);
+          origen  = Array.isArray(comunasOrigen)  ? comunasOrigen.join(", ")  : comunasOrigen;
+          destino = Array.isArray(comunasDestino) ? comunasDestino.join(", ") : comunasDestino;
+        } catch {
+          origen = b.comunas_origen;
+          destino = b.comunas_destino;
+        }
+      } else {
+        origen = "";
+        destino = "";
       }
 
       wsBuses.addRow({
@@ -1420,8 +1433,24 @@ async function exportarAsignacionesPdf(req, res) {
     const { id } = req.params;
 
     // === 1. Carga de datos ===
-    const turno = await prisma.turno.findUnique({ /* igual que antes */ });
-    const [assignmentBuses, assignmentPlanes] = await Promise.all([ /* igual que antes */ ]);
+    const turno = await prisma.turno.findUnique({
+      where: { id },
+      include: {
+        trabajadoresTurno: { include: { trabajador: true } },
+        planeTurno: { include: { plane: true } },
+        busTurno:  true,
+      },
+    });
+    const [assignmentBuses, assignmentPlanes] = await Promise.all([
+      prisma.assignmentBus.findMany({
+        where: { busTurno: { turnoId: id } },
+        include: { busTurno: true },
+      }),
+      prisma.assignmentPlane.findMany({
+        where: { planeTurno: { turnoId: id } },
+        include: { planeTurno: { include: { plane: true } } },
+      }),
+    ]);
 
     const busMap   = Object.fromEntries(assignmentBuses.map(a => [a.trabajadorTurnoId, a.busTurno]));
     const planeMap = Object.fromEntries(assignmentPlanes.map(a => [a.trabajadorTurnoId, a.planeTurno]));
@@ -1443,10 +1472,11 @@ async function exportarAsignacionesPdf(req, res) {
 
     const docDefinition = {
       pageSize: 'A4',
+      pageOrientation: 'landscape',
       pageMargins: [40, 60, 40, 60],
       content: [
         // Título
-        { text: '📄 Reporte de Turno', style: 'header' },
+        { text: 'Reporte de Turno', style: 'header' },
         // Metadata básico
         {
           columns: [
@@ -1468,6 +1498,7 @@ async function exportarAsignacionesPdf(req, res) {
               ...kpis.map(([label, valor]) => [ label, valor ])
             ]
           },
+          style: 'tableBody',
           layout: 'lightHorizontalLines',
         },
 
@@ -1519,14 +1550,18 @@ async function exportarAsignacionesPdf(req, res) {
             }
           });
 
+          // Set explicit column widths for 10 columns
+          const widths = [70, 55, 60, 45, 45, 60, 45, 45, 60, 45];
+
           return [
             { text: regionTipo, style: 'tableSubheader', margin: [0, 8, 0, 4] },
             {
               table: {
                 headerRows: 1,
-                widths: Array(header.length).fill('*'),
+                widths,
                 body: [ header, ...rows ]
               },
+              style: 'tableBody',
               layout: 'lightHorizontalLines',
               margin: [0, 0, 0, 8]
             }
@@ -1538,7 +1573,7 @@ async function exportarAsignacionesPdf(req, res) {
         {
           table: {
             headerRows: 1,
-            widths: ['auto','auto','*'],
+            widths: [60, 50, '*'],
             body: [
               [{ text: 'Bus ID', style: 'tableHeader' }, { text: 'Capacidad', style: 'tableHeader' }, { text: 'Ruta (hh:mm-hh:mm)', style: 'tableHeader' }],
               ...turno.busTurno.map(b => {
@@ -1548,6 +1583,7 @@ async function exportarAsignacionesPdf(req, res) {
               })
             ]
           },
+          style: 'tableBody',
           layout: 'lightHorizontalLines',
           pageBreak: 'after'
         },
@@ -1557,7 +1593,7 @@ async function exportarAsignacionesPdf(req, res) {
         {
           table: {
             headerRows: 1,
-            widths: ['auto','auto','*'],
+            widths: [60, 50, '*'],
             body: [
               [{ text: 'Vuelo ID', style: 'tableHeader' }, { text: 'Capacidad', style: 'tableHeader' }, { text: 'Ruta (hh:mm-hh:mm)', style: 'tableHeader' }],
               ...turno.planeTurno.map(p => {
@@ -1567,6 +1603,7 @@ async function exportarAsignacionesPdf(req, res) {
               })
             ]
           },
+          style: 'tableBody',
           layout: 'lightHorizontalLines'
         }
       ],
@@ -1574,8 +1611,9 @@ async function exportarAsignacionesPdf(req, res) {
         header:        { fontSize: 20, bold: true, alignment: 'center', margin: [0,0,0,10] },
         subheader:     { fontSize: 14, bold: true, margin: [0,10,0,4] },
         tableHeader:   { bold: true, fillColor: '#eeeeee' },
-        tableSubheader:{ italics: true, margin: [0,4,0,2] },
-        smallText:     { fontSize: 8, color: '#666666' }
+        tableSubheader:{ margin: [0,4,0,2] },
+        smallText:     { fontSize: 8, color: '#666666' },
+        tableBody:     { fontSize: 8 }
       },
       defaultStyle: {
         font: 'Helvetica',
