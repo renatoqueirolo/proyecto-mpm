@@ -1379,8 +1379,25 @@ async function exportarAsignacionesPdf(req, res) {
     const { id } = req.params;
 
     // === 1. Carga de datos ===
-    const turno = await prisma.turno.findUnique({ /* igual que antes */ });
-    const [assignmentBuses, assignmentPlanes] = await Promise.all([ /* igual que antes */ ]);
+    const turno = await prisma.turno.findUnique({
+      where: { id },
+      include: {
+        trabajadoresTurno: { include: { trabajador: true } },
+        planeTurno: { include: { plane: true } },
+        busTurno:  true,
+      },
+    });
+
+    const [assignmentBuses, assignmentPlanes] = await Promise.all([
+      prisma.assignmentBus.findMany({
+        where: { busTurno: { turnoId: id } },
+        include: { busTurno: true },
+      }),
+      prisma.assignmentPlane.findMany({
+        where: { planeTurno: { turnoId: id } },
+        include: { planeTurno: { include: { plane: true } } },
+      }),
+    ]);
 
     const busMap   = Object.fromEntries(assignmentBuses.map(a => [a.trabajadorTurnoId, a.busTurno]));
     const planeMap = Object.fromEntries(assignmentPlanes.map(a => [a.trabajadorTurnoId, a.planeTurno]));
@@ -1397,24 +1414,76 @@ async function exportarAsignacionesPdf(req, res) {
     }, {});
 
     // === 2. Definición del PDF ===
-    const fonts = { Helvetica: { normal: 'Helvetica', bold: 'Helvetica-Bold' } };
+    const fonts = {
+      Helvetica: {
+        normal: 'Helvetica',
+        bold: 'Helvetica-Bold',
+        italics: 'Helvetica-Oblique',
+        bolditalics: 'Helvetica-BoldOblique',
+      }
+    };
     const printer = new PdfPrinter(fonts);
 
     const docDefinition = {
       pageSize: 'A4',
       pageMargins: [40, 60, 40, 60],
       content: [
-        // Título
-        { text: '📄 Reporte de Turno', style: 'header' },
-        // Metadata básico
+        // ———————— TÍTULO PRINCIPAL ————————
+        {
+          text: turno.nombre,      // Nombre del turno como título
+          style: 'header'
+        },
+
+        // ———————— METADATA: ID / FECHA ————————
         {
           columns: [
             { width: 'auto', text: `ID: ${turno.id}`, style: 'smallText' },
             { width: '*', text: '' },
-            { width: 'auto', text: `Fecha: ${new Date(turno.fecha).toLocaleDateString()}`, style: 'smallText' }
+            {
+              width: 'auto',
+              text: `Fecha: ${new Date(turno.fecha).toLocaleDateString('es-CL')}`,
+              style: 'smallText'
+            }
           ]
         },
-        { text: '\n' },
+
+        // ———————— PROYECTO y TIPO DE TURNO ————————
+        {
+          columns: [
+            {
+              width: 'auto',
+              text: [
+                { text: 'Proyecto: ', style: 'smallText' },
+                { text: turno.proyecto === 'EL_TENIENTE' ? 'El Teniente'
+                      : turno.proyecto === 'SPENCE' ? 'Spence'
+                      : turno.proyecto === 'ESCONDIDA' ? 'Escondida'
+                      : turno.proyecto, 
+                  bold: true, style: 'smallText' }
+              ]
+            },
+            { width: '*', text: '' }
+          ],
+          margin: [0, 4, 0, 12]
+        },
+        {
+          columns: [
+            {
+              width: 'auto',
+              text: [
+                { text: 'Tipo: ', style: 'smallText' },
+                // conviertes tu enum FOURTEEN_FOURTEEN a “14x14” o via map
+                { text: turno.tipoTurno === 'FOURTEEN_FOURTEEN' ? '14×14'
+                      : turno.tipoTurno === 'SEVEN_SEVEN' ? '7×7'
+                      : turno.tipoTurno,
+                  bold: true,
+                  style: 'smallText' }
+              ]
+            },
+            {
+              width: '*', text: ''
+            }
+          ]
+        },
 
         // === KPIs ===
         { text: '1. Resumen de KPIs', style: 'subheader' },
@@ -1428,82 +1497,75 @@ async function exportarAsignacionesPdf(req, res) {
             ]
           },
           layout: 'lightHorizontalLines',
+          pageBreak: 'after'
         },
 
         // === Itinerarios por región ===
-        { text: '\n2. Itinerarios por Región y Tipo', style: 'subheader' },
+        { text: '2. Asignaciones por Región y Tipo', style: 'subheader' },
         ...Object.entries(porRegionYTipo).flatMap(([regionTipo, trabajadores]) => {
-          // construyes un bloque para cada sección
-          const header = [
-            'Nombre','RUT',
-            ...(regionTipo.endsWith('Subida')
-              ? ['Origen Bus','Salida Bus','Llegada Bus','Aeropuerto','Salida Vuelo','Llegada Vuelo','Destino','T. total (h)']
-              : ['Origen','Salida Vuelo','Llegada Vuelo','Aeropuerto','Salida Bus','Llegada Bus','Destino Bus','T. total (h)']
-            )
-          ];
-
-          const rows = trabajadores.map(tt => {
+          // para cada sección región–tipo, armamos un bloque:
+          const items = trabajadores.map(tt => {
             const bus   = busMap[tt.id];
             const vuelo = planeMap[tt.id];
-            const getHora = dt => dt ? new Date(dt).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}) : '';
+            const fmtHora = dt => dt
+              ? new Date(dt).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'})
+              : '--:--';
+            // calculamos tTotal igual que antes
             const tTotal = bus && vuelo
-              ? (((vuelo.horario_llegada - (tt.subida ? bus.horario_salida : vuelo.horario_salida)) / 36e5).toFixed(1))
-              : '';
-            if (tt.subida) {
-              return [
-                tt.trabajador.nombreCompleto,
-                tt.trabajador.rut,
-                tt.origen ?? '',
-                getHora(bus?.horario_salida),
-                getHora(bus?.horario_llegada),
-                bus?.plane?.ciudad_destino ?? '',
-                getHora(vuelo?.horario_salida),
-                getHora(vuelo?.horario_llegada),
-                tt.destino ?? '',
-                tTotal
-              ];
-            } else {
-              return [
-                tt.trabajador.nombreCompleto,
-                tt.trabajador.rut,
-                tt.origen ?? '',
-                getHora(vuelo?.horario_salida),
-                getHora(vuelo?.horario_llegada),
-                vuelo?.plane?.ciudad_destino ?? '',
-                getHora(bus?.horario_salida),
-                getHora(bus?.horario_llegada),
-                tt.origen ?? '',
-                tTotal
-              ];
-            }
+              ? ((new Date(vuelo.horario_llegada) - new Date(tt.subida ? bus.horario_salida : vuelo.horario_salida)) / 36e5).toFixed(1)
+              : 'n/a';
+            return `${tt.trabajador.nombreCompleto} (${tt.trabajador.rut}): ` +
+                  `Bus ${fmtHora(bus?.horario_salida)}–${fmtHora(bus?.horario_llegada)}, ` +
+                  `Vuelo ${fmtHora(vuelo?.horario_salida)}–${fmtHora(vuelo?.horario_llegada)}, ` +
+                  `Total ${tTotal} h`;
           });
 
           return [
-            { text: regionTipo, style: 'tableSubheader', margin: [0, 8, 0, 4] },
+            { text: regionTipo, style: 'tableSubheader2', margin: [0,8,0,4] },
             {
-              table: {
-                headerRows: 1,
-                widths: Array(header.length).fill('*'),
-                body: [ header, ...rows ]
-              },
-              layout: 'lightHorizontalLines',
-              margin: [0, 0, 0, 8]
+              ul: items,
+              margin: [0,0,0,6],
+              style: 'listText',
+              pageBreak: 'after'
             }
           ];
         }),
 
-        // === Itinerarios Buses ===
+        // ——— 3. Itinerarios de Buses ———
         { text: '3. Itinerarios de Buses', style: 'subheader' },
         {
           table: {
             headerRows: 1,
-            widths: ['auto','auto','*'],
+            widths: ['auto','auto','*','*','auto','auto'],
             body: [
-              [{ text: 'Bus ID', style: 'tableHeader' }, { text: 'Capacidad', style: 'tableHeader' }, { text: 'Ruta (hh:mm-hh:mm)', style: 'tableHeader' }],
+              [
+                { text: 'Bus ID', style: 'tableHeader' },
+                { text: 'Capacidad', style: 'tableHeader' },
+                { text: 'Origen', style: 'tableHeader' },
+                { text: 'Destino', style: 'tableHeader' },
+                { text: 'Salida', style: 'tableHeader' },
+                { text: 'Llegada', style: 'tableHeader' },
+              ],
               ...turno.busTurno.map(b => {
                 const occ = assignmentBuses.filter(a => a.busTurnoId === b.id).length;
-                const ruta = `${new Date(b.horario_salida).toLocaleTimeString('es-CL')} - ${new Date(b.horario_llegada).toLocaleTimeString('es-CL')}`;
-                return [ b.id, `${b.capacidad} (uso: ${occ})`, ruta ];
+                // parseo de comunas si es JSON
+                let origen = b.comunas_origen;
+                let destino = b.comunas_destino;
+                try {
+                  const o = JSON.parse(b.comunas_origen);
+                  origen  = Array.isArray(o) ? o.join(', ') : o;
+                  const d = JSON.parse(b.comunas_destino);
+                  destino = Array.isArray(d) ? d.join(', ') : d;
+                } catch {}
+                const fmt = dt => new Date(dt).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'});
+                return [
+                  b.id,
+                  `${b.capacidad} (uso: ${occ})`,
+                  origen,
+                  destino,
+                  fmt(b.horario_salida),
+                  fmt(b.horario_llegada),
+                ];
               })
             ]
           },
@@ -1511,29 +1573,48 @@ async function exportarAsignacionesPdf(req, res) {
           pageBreak: 'after'
         },
 
-        // === Itinerarios Vuelos ===
+        // ——— 4. Itinerarios de Vuelos ———
         { text: '4. Itinerarios de Vuelos', style: 'subheader', margin: [0,0,0,4] },
         {
           table: {
             headerRows: 1,
-            widths: ['auto','auto','*'],
+            widths: ['auto','auto','*','*','auto','auto'],
             body: [
-              [{ text: 'Vuelo ID', style: 'tableHeader' }, { text: 'Capacidad', style: 'tableHeader' }, { text: 'Ruta (hh:mm-hh:mm)', style: 'tableHeader' }],
+              [
+                { text: 'Vuelo ID', style: 'tableHeader' },
+                { text: 'Capacidad', style: 'tableHeader' },
+                { text: 'Origen', style: 'tableHeader' },
+                { text: 'Destino', style: 'tableHeader' },
+                { text: 'Salida', style: 'tableHeader' },
+                { text: 'Llegada', style: 'tableHeader' },
+              ],
               ...turno.planeTurno.map(p => {
                 const occ = assignmentPlanes.filter(a => a.planeTurnoId === p.id).length;
-                const ruta = `${new Date(p.horario_salida).toLocaleTimeString('es-CL')} - ${new Date(p.horario_llegada).toLocaleTimeString('es-CL')}`;
-                return [ p.id, `${p.capacidad} (uso: ${occ})`, ruta ];
+                const origen  = p.plane?.ciudad_origen   ?? '';
+                const destino = p.plane?.ciudad_destino  ?? '';
+                const fmt     = dt => new Date(dt).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'});
+                return [
+                  p.id,
+                  `${p.capacidad} (uso: ${occ})`,
+                  origen,
+                  destino,
+                  fmt(p.horario_salida),
+                  fmt(p.horario_llegada),
+                ];
               })
             ]
           },
           layout: 'lightHorizontalLines'
-        }
+        },
+
       ],
       styles: {
         header:        { fontSize: 20, bold: true, alignment: 'center', margin: [0,0,0,10] },
         subheader:     { fontSize: 14, bold: true, margin: [0,10,0,4] },
         tableHeader:   { bold: true, fillColor: '#eeeeee' },
         tableSubheader:{ italics: true, margin: [0,4,0,2] },
+        tableSubheader2:{ fontSize: 11, bold: true },
+        listText:      { fontSize: 9, margin: [0,2,0,2] },
         smallText:     { fontSize: 8, color: '#666666' }
       },
       defaultStyle: {
