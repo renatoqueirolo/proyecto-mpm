@@ -1191,7 +1191,7 @@ function calcularKPIs(turno, assignmentBuses, assignmentPlanes, busMap, planeMap
 
 async function exportarAsignacionesExcel(req, res) {
   const { id } = req.params;
-  const nombreArchivo = (req.query.nombre) || `asignaciones_turno_${id}`;
+  let nombreArchivo;
 
   const getHora = (date) => new Date(date).toISOString().substring(11, 16);
 
@@ -1205,6 +1205,12 @@ async function exportarAsignacionesExcel(req, res) {
         busTurno:  true,
       },
     });
+
+    // Sanitize turno name for filename
+    const safeTurnoName = turno.nombre ? turno.nombre.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
+    const dateObj = new Date(turno.fecha);
+    const safeDate = !isNaN(dateObj) ? dateObj.toISOString().slice(0,10) : "fecha";
+    nombreArchivo = `asignaciones_${safeTurnoName}_${safeDate}_excel`;
 
     const [assignmentBuses, assignmentPlanes] = await Promise.all([
       prisma.assignmentBus.findMany({
@@ -1441,6 +1447,13 @@ async function exportarAsignacionesPdf(req, res) {
         busTurno:  true,
       },
     });
+
+    // Sanitize turno name for filename
+    const safeTurnoName = turno.nombre ? turno.nombre.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
+    const dateObj = new Date(turno.fecha);
+    const safeDate = !isNaN(dateObj) ? dateObj.toISOString().slice(0,10) : "fecha";
+    const nombreArchivo = `asignaciones_${safeTurnoName}_${safeDate}_pdf`;
+
     const [assignmentBuses, assignmentPlanes] = await Promise.all([
       prisma.assignmentBus.findMany({
         where: { busTurno: { turnoId: id } },
@@ -1629,7 +1642,7 @@ async function exportarAsignacionesPdf(req, res) {
     pdfDoc.on('end', () => {
       const pdfBuffer = Buffer.concat(chunks);
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename=reporte_turno_${id}.pdf`);
+      res.setHeader('Content-Disposition', `attachment; filename=${nombreArchivo}.pdf`);
       res.send(pdfBuffer);
     });
     pdfDoc.end();
