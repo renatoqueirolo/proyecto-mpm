@@ -20,6 +20,7 @@ model User {
   email    String @unique
   password String
   role     RolUsuario @default(EJECUTIVO)
+  proyectos Project[]
   createdAt DateTime @default(now())
   turnosCreados Turno[] @relation("TurnosDelUsuario")
 }
@@ -37,8 +38,22 @@ model Trabajador {
   historialAsignacion HistorialAsignacion[]
 }
 
+enum Project {
+  ESCONDIDA
+  SPENCE
+  EL_TENIENTE
+}
+
+enum ShiftType {
+  FOURTEEN_FOURTEEN @map("14x14")
+  SEVEN_SEVEN       @map("7x7")
+}
+
 model Turno {
   id                 String             @id @default(cuid())
+  nombre             String
+  proyecto           Project
+  tipoTurno          ShiftType
   fecha              DateTime
   modeloEjecutado    Boolean
   creadoEn           DateTime           @default(now())

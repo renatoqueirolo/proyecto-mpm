@@ -1,6 +1,7 @@
 
 const express = require('express');
 const router = express.Router();
+const {  userMustBeLogged  } = require('../../middlewares/auth.middleware');
 const {
   crearTurno,
   obtenerTurnos,
@@ -8,7 +9,7 @@ const {
   obtenerTrabajadoresTurno,
   obtenerBusesTurno,
   obtenerAvionesTurno,
-  editarFechaTurno,
+  editarTurno,
   eliminarTurno,
   importarTrabajadoresAlTurno,
   asignarAvionesATurno,
@@ -25,6 +26,8 @@ const {
   actualizarParametrosModeloTurno,
   eliminarAsignacionesDelTurno,
   agregarAsignacionTurno,
+  eliminarAsignacionTurno,
+  editarAsignacionTurno,
   editarAsignacionTurnoBus,
   editarAsignacionTurnoPlane,
   obtenerAsignacionTurnoBus,
@@ -35,6 +38,8 @@ const {
   intercambioAsignacionTurnoPlane,
   agregarTrabajadorATurno
 } = require('../../controllers/turno/turno.controller');
+
+router.use(userMustBeLogged)
 
 /**
  * @swagger
@@ -107,7 +112,7 @@ router.get('/:id/trabajadores', obtenerTrabajadoresTurno);
 router.get('/:id/aviones', obtenerAvionesTurno);
 router.get('/:id/buses', obtenerBusesTurno);
 
-router.put('/:id', editarFechaTurno);
+router.put('/:id', editarTurno);
 
 
 /**
@@ -351,6 +356,10 @@ router.get('/:id/asignaciones', obtenerAsignacionesDeTurno);
  *         description: Asignacion creada
  */
 router.post('/:id/asignaciones', agregarAsignacionTurno);
+
+router.delete('/:id/asignaciones/:trabajadorTurnoId', eliminarAsignacionTurno)
+
+router.put('/:id/asignaciones/:trabajadorTurnoId', editarAsignacionTurno)
 
 router.put('/:id/asignaciones/bus', editarAsignacionTurnoBus);
 

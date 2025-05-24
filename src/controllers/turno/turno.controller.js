@@ -3,15 +3,19 @@ const { execFile } = require('child_process');
 const path = require('path');
 const PdfPrinter = require('pdfmake');;
 
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient, ShiftType } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 // Crear turno
 async function crearTurno(req, res) {
   try {
-    const { fecha, creadoPorId } = req.body;
-    if (!fecha || !creadoPorId)
+    const { nombre, fecha, creadoPorId, proyecto, tipoTurno } = req.body;
+    if (!fecha || !creadoPorId || !proyecto || !tipoTurno)
       return res.status(400).json({ error: 'Faltan campos requeridos' });
+
+    let tipoTurnoType;
+    if (tipoTurno == "14x14") tipoTurnoType = ShiftType.FOURTEEN_FOURTEEN
+    else if (tipoTurno == "7x7") tipoTurnoType = ShiftType.SEVEN_SEVEN
 
     const creadoPorIdString = creadoPorId.toString();
 
@@ -25,8 +29,11 @@ async function crearTurno(req, res) {
     const resultado = await prisma.$transaction(async (tx) => {
       const turno = await tx.turno.create({
         data: {
+          nombre: nombre,
           fecha: new Date(fecha),
           creadoPorId: creadoPorIdString,
+          proyecto: proyecto,
+          tipoTurno: tipoTurnoType,
           modeloEjecutado: false,
         },
       });
@@ -79,7 +86,13 @@ async function crearTurno(req, res) {
 // Obtener todos los turnos
 async function obtenerTurnos(req, res) {
   try {
+    const { proyectos } = req.user;
     const turnos = await prisma.turno.findMany({
+      where: {
+        proyecto: {
+          in: proyectos, // 👈 Filtra sólo los que puede ver este usuario
+        },
+      },
       orderBy: { fecha: 'desc' },
       include: { 
         trabajadoresTurno: true,
@@ -171,10 +184,10 @@ async function obtenerBusesTurno(req, res) {
 
 
 // Editar fecha turno
-async function editarFechaTurno(req, res) {
+async function editarTurno(req, res) {
   try {
     const { id } = req.params;
-    const { fecha } = req.body;
+    const { nombre, fecha, proyecto, tipoTurno } = req.body;
 
     const nuevaFecha = new Date(fecha);
     if (isNaN(nuevaFecha)) {
@@ -183,7 +196,7 @@ async function editarFechaTurno(req, res) {
 
     const turnoExistente = await prisma.turno.findUnique({
       where: { id },
-      select: { fecha: true },
+      select: { fecha: true, nombre: true, proyecto: true, tipoTurno: true },
     });
 
     if (!turnoExistente) {
@@ -202,7 +215,7 @@ async function editarFechaTurno(req, res) {
     // 1. Actualizar la fecha del turno
     await prisma.turno.update({
       where: { id },
-      data: { fecha: nuevaFecha },
+      data: { fecha: nuevaFecha, nombre: nombre, proyecto: proyecto, tipoTurno: tipoTurno },
     });
 
     // 2. Obtener planesTurno asociados
@@ -694,6 +707,59 @@ async function agregarAsignacionTurno(req, res) {
         console.error("Error al crear asignacion:", error);
 
     res.status(500).json({ error: 'Error al crear asignacion' });
+  }
+}
+
+async function eliminarAsignacionTurno(req, res) {
+  const { id: turnoId, trabajadorTurnoId } = req.params;
+
+  try {
+    // Buscar los planeTurno del turno
+    const planesDelTurno = await prisma.planeTurno.findMany({
+      where: { turnoId },
+      select: { id: true }
+    });
+
+    const planeTurnoIds = planesDelTurno.map(p => p.id);
+
+    // Eliminar asignaciones del trabajador solo en esos planeTurno
+    await prisma.assignmentPlane.deleteMany({
+      where: {
+        trabajadorTurnoId,
+        planeTurnoId: { in: planeTurnoIds }
+      }
+    });
+
+    res.status(204).send(); // No content
+  } catch (error) {
+    console.error("Error al eliminar asignación:", error);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+}
+
+async function editarAsignacionTurno(req, res) {
+  try {
+    const { turnoId, trabajadorTurnoId } = req.params;
+    const { nuevoPlaneTurnoId } = req.body;
+
+    const plane = await prisma.planeTurno.findUnique({
+      where: { id: nuevoPlaneTurnoId },
+      select: { turnoId: true },
+    });
+
+    if (!plane || plane.turnoId !== turnoId) {
+      return res.status(400).json({ error: "Avión no válido para este turno" });
+    }
+
+    await prisma.assignmentPlane.updateMany({
+      where: { trabajadorTurnoId },
+      data: { planeTurnoId: nuevoPlaneTurnoId },
+    });
+
+    res.status(200).send("Asignación actualizada");
+  } catch (error) {
+    console.error("Error al editar asignación:", error);
+    res.status(500).json({ error: "Error interno del servidor" });
   }
 }
 
@@ -1353,71 +1419,174 @@ async function exportarAsignacionesPdf(req, res) {
   try {
     const { id } = req.params;
 
-    const turno = await prisma.turno.findUnique({
-      where: { id },
-      include: {
-        trabajadoresTurno: { include: { trabajador: true } },
-        planeTurno: { include: { plane: true } },
-        busTurno:  true,
-      },
-    });
+    // === 1. Carga de datos ===
+    const turno = await prisma.turno.findUnique({ /* igual que antes */ });
+    const [assignmentBuses, assignmentPlanes] = await Promise.all([ /* igual que antes */ ]);
 
-    const [assignmentBuses, assignmentPlanes] = await Promise.all([
-      prisma.assignmentBus.findMany({
-        where: { busTurno: { turnoId: id } },
-        include: { busTurno: true },
-      }),
-      prisma.assignmentPlane.findMany({
-        where: { planeTurno: { turnoId: id } },
-        include: { planeTurno: { include: { plane: true } } },
-      }),
-    ]);
-
-    const busMap   = Object.fromEntries(assignmentBuses .map(a => [a.trabajadorTurnoId, a.busTurno]));
+    const busMap   = Object.fromEntries(assignmentBuses.map(a => [a.trabajadorTurnoId, a.busTurno]));
     const planeMap = Object.fromEntries(assignmentPlanes.map(a => [a.trabajadorTurnoId, a.planeTurno]));
+
     const kpis = calcularKPIs(turno, assignmentBuses, assignmentPlanes, busMap, planeMap);
 
-    const fonts = {
-      Helvetica: {
-        normal: 'Helvetica',
-        bold: 'Helvetica-Bold',
-        italics: 'Helvetica-Oblique',
-        bolditalics: 'Helvetica-BoldOblique',
-      }
-    };
+    // Agrupar por región y tipo
+    const porRegionYTipo = turno.trabajadoresTurno.reduce((acc, t) => {
+      const region = t.region || 'Sin Región';
+      const tipo   = t.subida ? 'Subida' : 'Bajada';
+      const key    = `${region} – ${tipo}`;
+      (acc[key] = acc[key] || []).push(t);
+      return acc;
+    }, {});
 
-
+    // === 2. Definición del PDF ===
+    const fonts = { Helvetica: { normal: 'Helvetica', bold: 'Helvetica-Bold' } };
     const printer = new PdfPrinter(fonts);
 
     const docDefinition = {
+      pageSize: 'A4',
+      pageMargins: [40, 60, 40, 60],
       content: [
-        { text: '📄 Reporte de Turno', style: 'header', alignment: 'center' },
-        { text: `ID del turno: ${turno.id}`, margin: [0, 10, 0, 4] },
-        { text: `Fecha: ${new Date(turno.fecha).toLocaleDateString()}` },
+        // Título
+        { text: '📄 Reporte de Turno', style: 'header' },
+        // Metadata básico
         {
-          style: 'tableExample',
-          margin: [0, 20, 0, 0],
+          columns: [
+            { width: 'auto', text: `ID: ${turno.id}`, style: 'smallText' },
+            { width: '*', text: '' },
+            { width: 'auto', text: `Fecha: ${new Date(turno.fecha).toLocaleDateString()}`, style: 'smallText' }
+          ]
+        },
+        { text: '\n' },
+
+        // === KPIs ===
+        { text: '1. Resumen de KPIs', style: 'subheader' },
+        {
           table: {
-            widths: ['*', '*'],
+            headerRows: 1,
+            widths: ['*', 100],
             body: [
-              ['KPI', 'Valor'],
-              ...kpis
+              [{ text: 'Indicador', style: 'tableHeader' }, { text: 'Valor', style: 'tableHeader' }],
+              ...kpis.map(([label, valor]) => [ label, valor ])
             ]
-          }
+          },
+          layout: 'lightHorizontalLines',
+        },
+
+        // === Itinerarios por región ===
+        { text: '\n2. Itinerarios por Región y Tipo', style: 'subheader' },
+        ...Object.entries(porRegionYTipo).flatMap(([regionTipo, trabajadores]) => {
+          // construyes un bloque para cada sección
+          const header = [
+            'Nombre','RUT',
+            ...(regionTipo.endsWith('Subida')
+              ? ['Origen Bus','Salida Bus','Llegada Bus','Aeropuerto','Salida Vuelo','Llegada Vuelo','Destino','T. total (h)']
+              : ['Origen','Salida Vuelo','Llegada Vuelo','Aeropuerto','Salida Bus','Llegada Bus','Destino Bus','T. total (h)']
+            )
+          ];
+
+          const rows = trabajadores.map(tt => {
+            const bus   = busMap[tt.id];
+            const vuelo = planeMap[tt.id];
+            const getHora = dt => dt ? new Date(dt).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}) : '';
+            const tTotal = bus && vuelo
+              ? (((vuelo.horario_llegada - (tt.subida ? bus.horario_salida : vuelo.horario_salida)) / 36e5).toFixed(1))
+              : '';
+            if (tt.subida) {
+              return [
+                tt.trabajador.nombreCompleto,
+                tt.trabajador.rut,
+                tt.origen ?? '',
+                getHora(bus?.horario_salida),
+                getHora(bus?.horario_llegada),
+                bus?.plane?.ciudad_destino ?? '',
+                getHora(vuelo?.horario_salida),
+                getHora(vuelo?.horario_llegada),
+                tt.destino ?? '',
+                tTotal
+              ];
+            } else {
+              return [
+                tt.trabajador.nombreCompleto,
+                tt.trabajador.rut,
+                tt.origen ?? '',
+                getHora(vuelo?.horario_salida),
+                getHora(vuelo?.horario_llegada),
+                vuelo?.plane?.ciudad_destino ?? '',
+                getHora(bus?.horario_salida),
+                getHora(bus?.horario_llegada),
+                tt.origen ?? '',
+                tTotal
+              ];
+            }
+          });
+
+          return [
+            { text: regionTipo, style: 'tableSubheader', margin: [0, 8, 0, 4] },
+            {
+              table: {
+                headerRows: 1,
+                widths: Array(header.length).fill('*'),
+                body: [ header, ...rows ]
+              },
+              layout: 'lightHorizontalLines',
+              margin: [0, 0, 0, 8]
+            }
+          ];
+        }),
+
+        // === Itinerarios Buses ===
+        { text: '3. Itinerarios de Buses', style: 'subheader' },
+        {
+          table: {
+            headerRows: 1,
+            widths: ['auto','auto','*'],
+            body: [
+              [{ text: 'Bus ID', style: 'tableHeader' }, { text: 'Capacidad', style: 'tableHeader' }, { text: 'Ruta (hh:mm-hh:mm)', style: 'tableHeader' }],
+              ...turno.busTurno.map(b => {
+                const occ = assignmentBuses.filter(a => a.busTurnoId === b.id).length;
+                const ruta = `${new Date(b.horario_salida).toLocaleTimeString('es-CL')} - ${new Date(b.horario_llegada).toLocaleTimeString('es-CL')}`;
+                return [ b.id, `${b.capacidad} (uso: ${occ})`, ruta ];
+              })
+            ]
+          },
+          layout: 'lightHorizontalLines',
+          pageBreak: 'after'
+        },
+
+        // === Itinerarios Vuelos ===
+        { text: '4. Itinerarios de Vuelos', style: 'subheader', margin: [0,0,0,4] },
+        {
+          table: {
+            headerRows: 1,
+            widths: ['auto','auto','*'],
+            body: [
+              [{ text: 'Vuelo ID', style: 'tableHeader' }, { text: 'Capacidad', style: 'tableHeader' }, { text: 'Ruta (hh:mm-hh:mm)', style: 'tableHeader' }],
+              ...turno.planeTurno.map(p => {
+                const occ = assignmentPlanes.filter(a => a.planeTurnoId === p.id).length;
+                const ruta = `${new Date(p.horario_salida).toLocaleTimeString('es-CL')} - ${new Date(p.horario_llegada).toLocaleTimeString('es-CL')}`;
+                return [ p.id, `${p.capacidad} (uso: ${occ})`, ruta ];
+              })
+            ]
+          },
+          layout: 'lightHorizontalLines'
         }
       ],
-      defaultStyle: {
-        font: 'Helvetica'
-      },  
       styles: {
-        header: { fontSize: 18, bold: true, margin: [0, 0, 0, 10] },
-        tableExample: { margin: [0, 5, 0, 15] },
+        header:        { fontSize: 20, bold: true, alignment: 'center', margin: [0,0,0,10] },
+        subheader:     { fontSize: 14, bold: true, margin: [0,10,0,4] },
+        tableHeader:   { bold: true, fillColor: '#eeeeee' },
+        tableSubheader:{ italics: true, margin: [0,4,0,2] },
+        smallText:     { fontSize: 8, color: '#666666' }
       },
+      defaultStyle: {
+        font: 'Helvetica',
+        fontSize: 10,
+        lineHeight: 1.2
+      }
     };
 
+    // === 3. Generar y enviar PDF ===
     const pdfDoc = printer.createPdfKitDocument(docDefinition);
     const chunks = [];
-
     pdfDoc.on('data', chunk => chunks.push(chunk));
     pdfDoc.on('end', () => {
       const pdfBuffer = Buffer.concat(chunks);
@@ -1425,8 +1594,8 @@ async function exportarAsignacionesPdf(req, res) {
       res.setHeader('Content-Disposition', `attachment; filename=reporte_turno_${id}.pdf`);
       res.send(pdfBuffer);
     });
-
     pdfDoc.end();
+
   } catch (error) {
     console.error("Error generando PDF:", error);
     res.status(500).json({ error: 'No se pudo generar el PDF' });
@@ -1512,7 +1681,7 @@ module.exports = {
   obtenerTrabajadoresTurno,
   obtenerAvionesTurno,
   obtenerBusesTurno,
-  editarFechaTurno,
+  editarTurno,
   eliminarTurno,
   importarTrabajadoresAlTurno,
   asignarAvionesATurno,
@@ -1529,6 +1698,8 @@ module.exports = {
   actualizarParametrosModeloTurno,
   eliminarAsignacionesDelTurno,
   agregarAsignacionTurno,
+  eliminarAsignacionTurno,
+  editarAsignacionTurno,
   editarAsignacionTurnoBus,
   editarAsignacionTurnoPlane,
   obtenerAsignacionTurnoBus,

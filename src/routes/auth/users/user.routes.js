@@ -1,8 +1,12 @@
 const express = require('express');
 const {
   login,
-  register
+  register,
+  changePassword
 } = require('../../../controllers/auth/user/auth.controller');
+const {
+  userMustBeLogged,
+} = require('../../../middlewares/auth.middleware');
 
 const router = express.Router();
 
@@ -35,5 +39,12 @@ router.post('/login', login);
  *         description: El registro de usuarios no está disponible públicamente       
  */
 router.post('/signup', register);
+
+router.get('/me', userMustBeLogged, (req, res) => {
+  res.json(req.user); 
+});
+
+router.post("/cambiar-password", userMustBeLogged, changePassword);
+
 
 module.exports = router;

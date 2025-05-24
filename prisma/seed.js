@@ -1,4 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient, Project } = require('@prisma/client');
 const bcrypt = require('bcrypt');
 const adminData = require('./adminData.json');
 
@@ -26,6 +26,9 @@ async function addAdmin() {
                 password: passwordHash,
                 name: admin.name,
                 role: "ADMIN",
+                proyectos: {
+                set: [Project.ESCONDIDA, Project.SPENCE, Project.EL_TENIENTE]
+                },
                 createdAt: new Date()
             }
         });
