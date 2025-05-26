@@ -323,6 +323,7 @@ async function editarCapacidadTurno(req, res) {
 
 async function editarAsignacionTurnoBus(req, res) {
   try {
+    console.log("saddsaads")
     const { asignaciones} = req.body;
     for (const asignacion of asignaciones) {
       trabajadorTurnoId = asignacion.trabajadorTurnoId;

@@ -359,23 +359,23 @@ router.post('/:id/asignaciones', agregarAsignacionTurno);
 
 router.delete('/:id/asignaciones/:trabajadorTurnoId', eliminarAsignacionTurno)
 
-router.put('/:id/asignaciones/:trabajadorTurnoId', editarAsignacionTurno)
+router.put('/:id/asignaciones/editar/:trabajadorTurnoId', editarAsignacionTurno)
 
 router.put('/:id/asignaciones/bus', editarAsignacionTurnoBus);
 
-router.put('/:id/asignaciones/plane', editarAsignacionTurnoPlane);
+router.put('/:id/asignaciones/vuelo', editarAsignacionTurnoPlane);
 
 router.get('/:id/asignaciones/bus/:busTurnoId', obtenerAsignacionTurnoBus);
 
-router.get('/:id/asignaciones/plane/:planeTurnoId', obtenerAsignacionTurnoPlane);
+router.get('/:id/asignaciones/vuelo/:planeTurnoId', obtenerAsignacionTurnoPlane);
 
 router.get('/:id/asignaciones/bus/compatibles/:trabajadorTurnoId', obtenerCompatiblesTurnoBus);
 
-router.get('/:id/asignaciones/plane/compatibles/:trabajadorTurnoId', obtenerCompatiblesTurnoPlane);
+router.get('/:id/asignaciones/vuelo/compatibles/:trabajadorTurnoId', obtenerCompatiblesTurnoPlane);
 
 router.put('/:id/asignaciones/bus/intercambio', intercambioAsignacionTurnoBus);
 
-router.put('/:id/asignaciones/plane/intercambio', intercambioAsignacionTurnoPlane);
+router.put('/:id/asignaciones/vuelo/intercambio', intercambioAsignacionTurnoPlane);
 
 /**
  * @swagger
