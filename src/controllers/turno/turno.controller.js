@@ -323,7 +323,6 @@ async function editarCapacidadTurno(req, res) {
 
 async function editarAsignacionTurnoBus(req, res) {
   try {
-    console.log("saddsaads")
     const { asignaciones} = req.body;
     for (const asignacion of asignaciones) {
       trabajadorTurnoId = asignacion.trabajadorTurnoId;
@@ -353,7 +352,6 @@ async function editarAsignacionTurnoPlane(req, res) {
       const asignacion_turno = await prisma.assignmentPlane.findFirst({
       where: { trabajadorTurnoId: trabajadorTurnoId },
     });
-      console.log("asignacion_turno", asignacion_turno);
       await prisma.assignmentPlane.update({
       where: {  id: asignacion_turno.id },
       data: {
@@ -509,7 +507,6 @@ async function obtenerCompatiblesTurnoBus(req, res) {
   try {
     const { trabajadorTurnoId } = req.params;
 
-    console.log("ID de trabajadorTurno:", trabajadorTurnoId);
 
     // 1. Buscar el trabajadorTurno con sus datos
     const trabajadorTurno = await prisma.trabajadorTurno.findUnique({
@@ -577,8 +574,6 @@ async function obtenerCompatiblesTurnoPlane(req, res) {
   try {
     const { trabajadorTurnoId } = req.params;
 
-    console.log("ID de trabajadorTurno:", trabajadorTurnoId);
-
     // 1. Buscar el trabajadorTurno con sus datos
     const trabajadorTurno = await prisma.trabajadorTurno.findUnique({
       where: { id: trabajadorTurnoId },
@@ -615,7 +610,6 @@ async function obtenerCompatiblesTurnoPlane(req, res) {
     });
         const asignacionPlane = await prisma.assignmentPlane.findFirst({
       where: { trabajadorTurnoId: trabajadorTurnoId }    });
-    console.log("asignacionPlane", asignacionPlane);
     const planeId = asignacionPlane.planeTurnoId;
     const asignados = await prisma.assignmentPlane.findMany({
       where: { planeTurnoId: planeId },
@@ -682,7 +676,6 @@ async function intercambioAsignacionTurnoPlane(req, res) {
 async function eliminarCapacidadTurno(req, res) {
   try {
     const {id} = req.body;
-    console.log("ID de capacidad a eliminar:", id);
     await prisma.capacidadTurno.delete({ where: { id } });
     res.status(204).send();
   } catch (error) {
@@ -695,7 +688,6 @@ async function agregarAsignacionTurno(req, res) {
   try {
     const { id } = req.params;
     const { planeTurnoId, trabajadorTurnoId } = req.body;
-    console.log("ID de turno:", trabajadorTurnoId);
     const restriccion = await prisma.assignmentPlane.create({
       data: {
         planeTurnoId,
