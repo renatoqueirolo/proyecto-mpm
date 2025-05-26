@@ -207,40 +207,41 @@ async function editarTurno(req, res) {
     const diffMs = nuevaFecha.getTime() - fechaOriginal.getTime();
     const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24)); // diferencia en días
 
-    // Si no hay cambio en días, no es necesario actualizar planes
-    if (diffDias === 0) {
-      return res.status(200).json({ message: "Fecha sin cambios" });
-    }
-
-    // 1. Actualizar la fecha del turno
+    // 1. Actualizar todos los parametros del turno
     await prisma.turno.update({
       where: { id },
       data: { fecha: nuevaFecha, nombre: nombre, proyecto: proyecto, tipoTurno: tipoTurno },
     });
 
-    // 2. Obtener planesTurno asociados
-    const planes = await prisma.planeTurno.findMany({
-      where: { turnoId: id },
-      select: {
-        id: true,
-        horario_salida: true,
-        horario_llegada: true,
-      }
-    });
+    // Si no hay cambio en días, no es necesario actualizar planes
+    if (diffDias !== 0) {
 
-    const actualizaciones = planes.map(p =>
-      prisma.planeTurno.update({
-        where: { id: p.id },
-        data: {
-          horario_salida: new Date(new Date(p.horario_salida).getTime() + diffDias * 24 * 60 * 60 * 1000),
-          horario_llegada: new Date(new Date(p.horario_llegada).getTime() + diffDias * 24 * 60 * 60 * 1000),
-        },
-      })
-    );
+      // 2. Obtener planesTurno asociados
+      const planes = await prisma.planeTurno.findMany({
+        where: { turnoId: id },
+        select: {
+          id: true,
+          horario_salida: true,
+          horario_llegada: true,
+        }
+      });
 
-    await Promise.all(actualizaciones);
+      const actualizaciones = planes.map(p =>
+        prisma.planeTurno.update({
+          where: { id: p.id },
+          data: {
+            horario_salida: new Date(new Date(p.horario_salida).getTime() + diffDias * 24 * 60 * 60 * 1000),
+            horario_llegada: new Date(new Date(p.horario_llegada).getTime() + diffDias * 24 * 60 * 60 * 1000),
+          },
+        })
+      );
 
-    res.status(200).json({ message: `Fecha del turno actualizada y planes ajustados en ${diffDias} día(s)` });
+      await Promise.all(actualizaciones);
+    }
+
+    
+
+    res.status(200).json({ message: `Turno actualizado` });
   } catch (error) {
     console.error("Error al editar turno:", error);
     res.status(500).json({ error: "Error al editar turno" });
