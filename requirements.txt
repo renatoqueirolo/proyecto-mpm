@@ -6,5 +6,4 @@ python-dotenv
 openpyxl
 SQLAlchemy
 XlsxWriter
-fake-useragent
 requests
