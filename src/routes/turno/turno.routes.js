@@ -1,20 +1,45 @@
 
 const express = require('express');
 const router = express.Router();
+const {  userMustBeLogged  } = require('../../middlewares/auth.middleware');
 const {
   crearTurno,
   obtenerTurnos,
   obtenerTurno,
-  editarFechaTurno,
+  obtenerTrabajadoresTurno,
+  obtenerBusesTurno,
+  obtenerAvionesTurno,
+  editarTurno,
   eliminarTurno,
   importarTrabajadoresAlTurno,
   asignarAvionesATurno,
-  crearRestriccionTurno,
   optimizarTurno,
   obtenerAsignacionesDeTurno,
   obtenerHistorialDeTurno,
-  exportarAsignaciones,
+  exportarAsignacionesExcel,
+  exportarAsignacionesPdf,
+  agregarCapacidadTurno,
+  obtenerCapacidadTurno,
+  editarCapacidadTurno,
+  eliminarCapacidadTurno,
+  obtenerParametrosModelo,
+  actualizarParametrosModeloTurno,
+  eliminarAsignacionesDelTurno,
+  agregarAsignacionTurno,
+  eliminarAsignacionTurno,
+  editarAsignacionTurno,
+  editarAsignacionTurnoBus,
+  editarAsignacionTurnoPlane,
+  obtenerAsignacionTurnoBus,
+  obtenerAsignacionTurnoPlane,
+  obtenerCompatiblesTurnoBus,
+  obtenerCompatiblesTurnoPlane,
+  intercambioAsignacionTurnoBus,
+  intercambioAsignacionTurnoPlane,
+  agregarTrabajadorATurno
 } = require('../../controllers/turno/turno.controller');
+
+router.use(userMustBeLogged)
 
 /**
  * @swagger
@@ -83,8 +108,11 @@ router.get('/', obtenerTurnos);
  *         description: No encontrado
  */
 router.get('/:id', obtenerTurno);
+router.get('/:id/trabajadores', obtenerTrabajadoresTurno);
+router.get('/:id/aviones', obtenerAvionesTurno);
+router.get('/:id/buses', obtenerBusesTurno);
 
-router.put('/:id', editarFechaTurno);
+router.put('/:id', editarTurno);
 
 
 /**
@@ -140,6 +168,8 @@ router.delete('/:id', eliminarTurno);
  *         description: Trabajadores importados
  */
 router.post('/:id/trabajadores', importarTrabajadoresAlTurno);
+router.post("/:id/trabajador", agregarTrabajadorATurno);
+
 
 /**
  * @swagger
@@ -219,38 +249,6 @@ router.post('/:id/planes', asignarAvionesATurno);
 
 /**
  * @swagger
- * /turnos/{id}/restricciones:
- *   post:
- *     summary: Crear una restricción para un turno
- *     tags: [Turnos]
- *     parameters:
- *       - name: id
- *         in: path
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [tipo, valor]
- *             properties:
- *               tipo:
- *                 type: string
- *               valor:
- *                 type: string
- *               descripcion:
- *                 type: string
- *     responses:
- *       201:
- *         description: Restricción creada
- */
-router.post('/:id/restricciones', crearRestriccionTurno);
-
-/**
- * @swagger
  * /turnos/{id}/optimizar:
  *   post:
  *     summary: Ejecutar el modelo de optimización
@@ -267,6 +265,62 @@ router.post('/:id/restricciones', crearRestriccionTurno);
  */
 router.post('/:id/optimizar', optimizarTurno);
 
+/**
+ * @swagger
+ * /turnos/{id}/capacidad:
+ *   post:
+ *     summary: Crear una capacidad para un turno
+ *     tags: [Turnos]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       201:
+ *         description: Capacidad creada
+ */
+router.post('/:id/capacidad', agregarCapacidadTurno);
+
+/**
+ * @swagger
+ * /turnos/{id}/capacidad:
+ *   get:
+ *     summary: Obtener capacidades de un turno
+ *     tags: [Turnos]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Capacidades encontradas
+ */
+router.get('/:id/capacidad', obtenerCapacidadTurno);
+
+router.put('/:id/capacidad', editarCapacidadTurno);
+
+
+/**
+ * @swagger
+ * /turnos/{id}/capacidad:
+ *   delete:
+ *     summary: Eliminar capacidad
+ *     tags: [Turnos]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       204:
+ *         description: Eliminado exitosamente
+ */
+router.delete('/:id/capacidad', eliminarCapacidadTurno);
 /**
  * @swagger
  * /turnos/{id}/asignaciones:
@@ -287,6 +341,44 @@ router.get('/:id/asignaciones', obtenerAsignacionesDeTurno);
 
 /**
  * @swagger
+ * /turnos/{id}/asignaciones:
+ *   post:
+ *     summary: Crear una asignacion para un turno
+ *     tags: [Turnos]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       201:
+ *         description: Asignacion creada
+ */
+router.post('/:id/asignaciones', agregarAsignacionTurno);
+
+router.delete('/:id/asignaciones/:trabajadorTurnoId', eliminarAsignacionTurno)
+
+router.put('/:id/asignaciones/editar/:trabajadorTurnoId', editarAsignacionTurno)
+
+router.put('/:id/asignaciones/bus', editarAsignacionTurnoBus);
+
+router.put('/:id/asignaciones/vuelo', editarAsignacionTurnoPlane);
+
+router.get('/:id/asignaciones/bus/:busTurnoId', obtenerAsignacionTurnoBus);
+
+router.get('/:id/asignaciones/vuelo/:planeTurnoId', obtenerAsignacionTurnoPlane);
+
+router.get('/:id/asignaciones/bus/compatibles/:trabajadorTurnoId', obtenerCompatiblesTurnoBus);
+
+router.get('/:id/asignaciones/vuelo/compatibles/:trabajadorTurnoId', obtenerCompatiblesTurnoPlane);
+
+router.put('/:id/asignaciones/bus/intercambio', intercambioAsignacionTurnoBus);
+
+router.put('/:id/asignaciones/vuelo/intercambio', intercambioAsignacionTurnoPlane);
+
+/**
+ * @swagger
  * /turnos/{id}/historial:
  *   get:
  *     summary: Obtener historial de asignaciones
@@ -303,6 +395,75 @@ router.get('/:id/asignaciones', obtenerAsignacionesDeTurno);
  */
 router.get('/:id/historial', obtenerHistorialDeTurno);
 
-router.get('/:id/exportar', exportarAsignaciones);
+router.get('/:id/exportar_excel', exportarAsignacionesExcel);
+
+router.get('/:id/exportar_pdf', exportarAsignacionesPdf);
+
+
+
+/**
+ * @swagger
+ * /turnos/{id}/parametros:
+ *   get:
+ *     summary: Obtener parámetros del modelo de optimización
+ *     tags: [Turnos]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Parámetros encontrados
+ *       404:
+ *        description: No encontrado
+ */
+router.get('/:id/parametros', obtenerParametrosModelo);
+
+/**
+ * @swagger
+ * /turnos/{id}/parametros:
+ *   put:
+ *     summary: Actualizar parámetros del modelo de optimización
+ *     tags: [Turnos]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *              espera_conexion_subida:
+ *                type: integer
+ *                description: Tiempo de espera para la conexión de subida
+ *              espera_conexion_bajada:
+ *                type: integer
+ *                description: Tiempo de espera para la conexión de bajada
+ *              tiempo_promedio_espera:
+ *                type: integer
+ *                description: Tiempo promedio de espera
+ *              max_tiempo_ejecucion:
+ *                type: integer
+ *                description: Tiempo máximo de ejecución
+ *              tiempo_adicional_parada:
+ *                type: integer
+ *                description: Tiempo adicional de parada
+ *              min_hora:
+ *                type: string
+ *                description: Hora mínima de operación
+ *              max_hora:
+ *                type: string
+ *                description: Hora máxima de operación
+ */
+router.put('/:id/parametros', actualizarParametrosModeloTurno);
+router.delete('/:id/asignaciones', eliminarAsignacionesDelTurno);
+
 
 module.exports = router;

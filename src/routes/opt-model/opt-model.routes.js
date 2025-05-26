@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router({ mergeParams: true });
 
 // Bus Routes
-const busRoutes = require('./bus/bus.routes');
+const busRoutes = require('./bus/busTurno.routes');
 router.use('/buses', busRoutes);
 // Assignment Bus Routes
 const assignmentBusRoutes = require('./bus/assignmentBus.routes');

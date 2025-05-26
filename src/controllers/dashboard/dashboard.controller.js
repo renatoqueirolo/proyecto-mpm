@@ -5,8 +5,16 @@ async function getDashboardWorkers(req, res) {
   try {
     const workers = await prisma.worker.findMany({
       include: {
-        assignmentBuses: { include: { bus: true } },
-        assignmentPlanes: { include: { plane: true } },
+        assignmentBuses: {
+          include: {
+            busTurno: true,  // 👈 en lugar de bus
+          },
+        },
+        assignmentPlanes: {
+          include: {
+            plane: true,
+          },
+        },
       },
     });
     res.json(workers);
@@ -18,9 +26,13 @@ async function getDashboardWorkers(req, res) {
 
 async function getDashboardBuses(req, res) {
   try {
-    const buses = await prisma.bus.findMany({
+    const buses = await prisma.busTurno.findMany({
       include: {
-        assignmentBuses: { include: { worker: true } },
+        assignmentBuses: {
+          include: {
+            trabajador: true,  // 👈 nuevo nombre en tu modelo
+          },
+        },
       },
     });
     res.json(buses);

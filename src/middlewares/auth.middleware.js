@@ -17,7 +17,7 @@ const userMustBeLogged = async (req, res, next) => {
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.user.id },
-      select: { id: true, email: true, name: true, role: true },
+      select: { id: true, email: true, name: true, role: true, proyectos: true },
     });
 
     if (!user) throw new Error("El usuario del token no existe");

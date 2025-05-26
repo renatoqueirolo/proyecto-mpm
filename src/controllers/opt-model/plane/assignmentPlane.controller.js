@@ -13,13 +13,20 @@ const createAssignmentPlane = async (req, res) => {
   }
 };
 
-// Read all AssignmentPlanes
 const getAssignmentPlanes = async (req, res) => {
   try {
     const assignments = await prisma.assignmentPlane.findMany({
       include: {
-        plane: true,
-        worker: true,
+        planeTurno: {
+          include: {
+            plane: true, // si también quieres ver detalles del avión
+          },
+        },
+        trabajadorTurno: {
+          include: {
+            trabajador: true, // si también quieres ver detalles del trabajador
+          },
+        },
       },
     });
     res.status(200).json(assignments);
@@ -28,12 +35,13 @@ const getAssignmentPlanes = async (req, res) => {
   }
 };
 
+
 // Update AssignmentPlane
 const updateAssignmentPlane = async (req, res) => {
   try {
     const { id } = req.params;
     const updated = await prisma.assignmentPlane.update({
-      where: { id_assignment_plane: id },
+      where: {id},
       data: req.body,
     });
     res.status(200).json(updated);
@@ -47,7 +55,7 @@ const deleteAssignmentPlane = async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.assignmentPlane.delete({
-      where: { id_assignment_plane: id },
+      where: {id},
     });
     res.status(204).send();
   } catch (error) {

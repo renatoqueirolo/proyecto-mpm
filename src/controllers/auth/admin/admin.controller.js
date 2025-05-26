@@ -54,10 +54,10 @@ const getUser = async (req, res) => {
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, password, role } = req.body;
+    const { name, email, proyectos, role } = req.body;
     const updatedUser = await prisma.user.update({
       where: { id: id },
-      data: { name, email, password, role },
+      data: { name, email, proyectos, role },
     });
     return res.status(200).json({ message: "Usuario actualizado correctamente.", updatedUser });
   } catch (error) {

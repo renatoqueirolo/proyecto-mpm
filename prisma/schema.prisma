@@ -20,6 +20,7 @@ model User {
   email    String @unique
   password String
   role     RolUsuario @default(EJECUTIVO)
+  proyectos Project[]
   createdAt DateTime @default(now())
   turnosCreados Turno[] @relation("TurnosDelUsuario")
 }
@@ -37,8 +38,22 @@ model Trabajador {
   historialAsignacion HistorialAsignacion[]
 }
 
+enum Project {
+  ESCONDIDA
+  SPENCE
+  EL_TENIENTE
+}
+
+enum ShiftType {
+  FOURTEEN_FOURTEEN @map("14x14")
+  SEVEN_SEVEN       @map("7x7")
+}
+
 model Turno {
   id                 String             @id @default(cuid())
+  nombre             String
+  proyecto           Project
+  tipoTurno          ShiftType
   fecha              DateTime
   modeloEjecutado    Boolean
   creadoEn           DateTime           @default(now())
@@ -47,8 +62,9 @@ model Turno {
   trabajadoresTurno  TrabajadorTurno[]
   busTurno           BusTurno[]
   planeTurno         PlaneTurno[]
-  restricciones      RestriccionTurno[]
+  parametrosModelo      ParametrosModeloTurno?
   historialAsignacion HistorialAsignacion[]
+  CapacidadTurno     CapacidadTurno[]
 }
 
 model TrabajadorTurno {
@@ -58,6 +74,7 @@ model TrabajadorTurno {
   acercamiento  String
   origen        String
   destino       String
+  region        String
   subida        Boolean
 
   trabajador    Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
@@ -67,32 +84,31 @@ model TrabajadorTurno {
   assignmentPlanes  AssignmentPlane[]
 }
 
-model Bus {
-  id        String           @id @default(cuid())
-  capacidad     Int
-  comunas_origen String          // JSON string
-  comunas_destino String         // JSON string
-  horario_salida DateTime
-  horario_llegada DateTime
-
-  busTurno BusTurno[]
-}
 
 model BusTurno {
   id              String   @id @default(cuid())
   turnoId         String
-  busId           String
   capacidad       Int
   horario_salida  DateTime
   horario_llegada DateTime
+  comunas_origen String      
+  comunas_destino String     
 
   turno           Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
-  bus             Bus      @relation(fields: [busId], references: [id], onDelete: Cascade)
 
   assignmentBuses AssignmentBus[]
 }
 
+model CapacidadTurno {
+  id              String   @id @default(cuid())
+  turnoId         String
+  capacidad       Int
+  region          String  
 
+  turno           Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+
+  @@unique([turnoId, region, capacidad], name: "turnoId_region_capacidad")
+}
 model Plane {
   id        String          @id @default(cuid())
   capacidad Int
@@ -109,8 +125,8 @@ model PlaneTurno {
   planeId   String
   turnoId   String
   capacidad Int
-  horario_salida String
-  horario_llegada String
+  horario_salida DateTime
+  horario_llegada DateTime
 
   plane     Plane    @relation(fields: [planeId], references: [id], onDelete: Cascade)
   turno     Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
@@ -137,12 +153,16 @@ model AssignmentPlane {
   planeTurno       PlaneTurno      @relation(fields: [planeTurnoId], references: [id], onDelete: Cascade)
 }
 
-model RestriccionTurno {
+model ParametrosModeloTurno {
   id          String   @id @default(cuid())
-  turnoId     String
-  tipo        String
-  valor       String
-  descripcion String?
+  turnoId     String   @unique
+  espera_conexion_subida   Int    @default(180)
+  espera_conexion_bajada   Int    @default(10)
+  tiempo_promedio_espera   Float    @default(0)
+  max_tiempo_ejecucion     Int      @default(120)
+  tiempo_adicional_parada  Int      @default(30)
+  min_hora                 Int      @default(800)
+  max_hora                 Int      @default(2000)
 
   turno       Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
 }

@@ -41,6 +41,7 @@ cd proyecto-mpm
 ```bash
 npm install
 
+# Crear el entorno virtual
 python3 -m venv venv
 
 # Activar el entorno virtual
@@ -50,7 +51,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 #En su defecto (si demora mucho) instalar las librerias de las siguiente forma
-pip install ortools pandas numpy psycopg2-binary python-dotenv openpyxl SQLAlchemy
+pip install ortools pandas numpy psycopg2-binary python-dotenv openpyxl SQLAlchemy XlsxWriter requests
 ```
 
 ---
@@ -63,7 +64,13 @@ Crea un archivo `.env` en la raíz del proyecto basado en el archivo de ejemplo:
 cp .env.example .env
 ```
 
-Edita ese archivo `.env` con tus valores reales.
+Edita ese archivo `.env` con los siguientes valores.
+
+```bash
+DATABASE_URL="postgresql://mpmuser:mpm_equipo10@localhost:5432/mpm"
+JWT_SECRET="clave-secreta-jwt"
+PORT=3000
+```
 
 ---
 
@@ -87,11 +94,26 @@ ALTER USER mpmuser CREATEDB;
 
 ---
 
-### 5. Aplica las migraciones de Prisma
+### 5. Resetear la base de datos (Opcional)
+⚠️ Atención: este comando eliminará toda la información que haya en la base de datos. Solo hazlo cuando quieras empezar completamente limpio o es absolutamente necesario.
 
+```bash
+# Elimina todas las tablas
+npx prisma db drop --force
+# Vuelca el esquema actual a la base
+npx prisma db push
+```
+
+### 6. Aplica las migraciones de Prisma
+
+En caso de no aplicar el paso anterior, realiza lo siguiente:
 ```bash
 npx prisma generate
 npx prisma db push
+```
+
+Sin importar el paso anterior, realiza lo siguiente:
+```bash
 npx prisma db seed
 ```
 
@@ -99,7 +121,7 @@ npx prisma db seed
 
 ---
 
-### 6. Corre el servidor
+### 7. Corre el servidor
 
 
 ```bash
