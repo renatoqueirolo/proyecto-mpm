@@ -11,6 +11,12 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 import unicodedata
 import time
+import psutil
+
+process = psutil.Process(os.getpid())
+mem_inicial = process.memory_info().rss / (1024 * 1024)  # en MB
+print(f"🔍 Memoria inicial usada por el proceso: {mem_inicial:.2f} MB")
+
 start_time = time.time()
 
 def normalizar(texto):
@@ -434,3 +440,7 @@ conn.commit()
 cursor.close()
 conn.close()
 print(f"✈️🚌 Asignaciones insertadas exitosamente para el turno {turno_id}")
+
+mem_final = process.memory_info().rss / (1024 * 1024)
+print(f"✅ Memoria final usada por el proceso: {mem_final:.2f} MB")
+print(f"📈 Diferencia de memoria: {mem_final - mem_inicial:.2f} MB")

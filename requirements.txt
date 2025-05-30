@@ -7,3 +7,4 @@ openpyxl
 SQLAlchemy
 XlsxWriter
 requests
+psutil
