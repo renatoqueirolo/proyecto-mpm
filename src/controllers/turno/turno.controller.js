@@ -914,7 +914,7 @@ const asignarAvionesATurno = async (req, res) => {
       const sumarDia = minutosTotales < 780; // antes de las 13:00
       const fechaBaseAjustada = new Date(fechaBase);
       if (sumarDia) fechaBaseAjustada.setDate(fechaBaseAjustada.getDate() + 1);
-      fechaBaseAjustada.setHours(hh+20, mm, 0, 0);
+      fechaBaseAjustada.setHours(hh, mm, 0, 0);
       return fechaBaseAjustada;
     };
 
