@@ -282,7 +282,16 @@ for t in trabajadores:
     if region_trabajadores[t] != 13:
         subida = df_trabajadores[df_trabajadores["trabajador_id"] == t]["subida"].values[0]
         for b in buses:
+            if subida and normalizar(comunas_trabajadores[t]) not in map(str.upper, comunas_origen_bus[b]):
+                continue
+            if not subida and normalizar(comunas_trabajadores[t]) not in map(str.upper, comunas_destino_bus[b]):
+                continue
+
             for v in vuelos:
+                if normalizar(origen_planes[v]) != normalizar(origen_trabajadores[t]):
+                    continue
+                if normalizar(destino_planes[v]) != normalizar(destino_trabajadores[t]):
+                    continue
                 # Crear la variable de diferencia
                 diff_expr = HV[v] - HB_var[b] if subida else HB_var[b] - HV_bajada[v]
 
