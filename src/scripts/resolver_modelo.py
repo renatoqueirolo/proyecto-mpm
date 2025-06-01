@@ -220,8 +220,8 @@ for t in trabajadores:
     fila = df_trabajadores[df_trabajadores["trabajador_id"] == t].iloc[0]
     subida = fila["subida"]
 
-    for b in buses:
-        if use_bus_trabajadores[t] ==1:
+    if use_bus_trabajadores[t] ==1:
+        for b in buses:
             if subida:
                 if normalizar(comunas_trabajadores[t]) not in map(str.upper, comunas_origen_bus[b]):
                     model.Add(x[(t, b)] == 0)
@@ -229,20 +229,20 @@ for t in trabajadores:
                 if normalizar(comunas_trabajadores[t]) not in map(str.upper, comunas_destino_bus[b]):
                     model.Add(x[(t, b)] == 0)
 
-    for v in vuelos:
-        if use_plane_trabajadores[t] ==1:
+    if use_plane_trabajadores[t] ==1:
+        for v in vuelos:
             if normalizar(origen_planes[v]) != (normalizar(origen_trabajadores[t])):
                 model.Add(y[(t, v)] == 0)
             if normalizar(destino_planes[v]) != (normalizar(destino_trabajadores[t])):
                 model.Add(y[(t, v)] == 0)
 
     # Restricción de conexión temporal
-    for b in buses:
-        for v in vuelos:
-            if subida:
-                model.Add(HB_var[b] + espera_conexion_subida <= HV[v]).OnlyEnforceIf([x[(t, b)], y[(t, v)]])
-            else:
-                model.Add(HB_var[b] >= HV_bajada[v] + espera_conexion_bajada).OnlyEnforceIf([x[(t, b)], y[(t, v)]])
+            if use_bus_trabajadores[t] ==1:
+                for b in buses:
+                    if subida:
+                        model.Add(HB_var[b] + espera_conexion_subida <= HV[v]).OnlyEnforceIf([x[(t, b)], y[(t, v)]])
+                    else:
+                        model.Add(HB_var[b] >= HV_bajada[v] + espera_conexion_bajada).OnlyEnforceIf([x[(t, b)], y[(t, v)]])
 
 # -------------------------
 # Logs para depuración
