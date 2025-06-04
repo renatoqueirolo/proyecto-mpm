@@ -285,7 +285,7 @@ print(f"🚫 Trabajadores sin vuelos compatibles: {incompatibles_vuelo}")
 espera_total = []
 comb_vars = {}
 for t in trabajadores:
-    if region_trabajadores[t] != 13:
+    if use_plane_trabajadores[t] == 1 and use_bus_trabajadores[t] == 1:
         subida = df_trabajadores[df_trabajadores["trabajador_id"] == t]["subida"].values[0]
         for b in buses:
             if subida and normalizar(comunas_trabajadores[t]) not in map(str.upper, comunas_origen_bus[b]):
