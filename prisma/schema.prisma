@@ -120,6 +120,27 @@ model Plane {
   planeTurno PlaneTurno[]
 }
 
+model CommercialPlane {
+  id               Int       @id @default(autoincrement())
+  airline          String
+  flightCode       String
+  origin           String
+  destination      String
+  departureDate    DateTime 
+  departureTime    DateTime  
+  arrivalTime      DateTime
+  durationMinutes  Int
+  priceClp         BigInt
+  direct           Boolean
+  stops            Int
+  stopsDetail      Json?
+  seatsAvailable   Int
+  createdAt        DateTime  @default(now())
+
+  @@unique([airline, flightCode, departureDate], name: "airline_flightCode_departureDate") 
+  @@index([origin, destination, departureDate])
+}
+
 model PlaneTurno {
   id        String   @id @default(cuid())
   planeId   String

@@ -8,3 +8,4 @@ SQLAlchemy
 XlsxWriter
 requests
 psutil
+fake_useragent

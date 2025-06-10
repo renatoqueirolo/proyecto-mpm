@@ -7,6 +7,7 @@ const {
   deletePlane,
   deleteAllPlanes,
   importarDesdeExcel,
+  getCommercialPlanes,
 } = require('../../../controllers/opt-model/plane/plane.controller');
 
 /**
@@ -98,6 +99,21 @@ router.delete('/', deleteAllPlanes);
  *         description: Error al importar los aviones
  */
 router.post('/import', importarDesdeExcel);
+
+/**
+ * @swagger
+ * /planes/commercial:
+ *   get:
+ *     summary: Obtiene todos los aviones comerciales
+ *     tags:
+ *      - Gestión de Aviones
+ *     responses:
+ *       200:
+ *         description: Respuesta exitosa
+ *       500:
+ *         description: Error al obtener los aviones comerciales
+ */
+router.get('/commercial', getCommercialPlanes);
 
 
 

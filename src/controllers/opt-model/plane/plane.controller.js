@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const {  getFlights } = require('../../../services/commercialFlightService');
 
 // Create Plane
 const createPlane = async (req, res) => {
@@ -87,6 +88,31 @@ const importarDesdeExcel = async (req, res) => {
   }
 };
 
+const getCommercialPlanes = async (req, res) => {
+  try {
+    const { origen, destino, fecha } = req.query 
+
+    if (!origen || !destino || !fecha) {
+      return res
+        .status(400)
+        .json({ error: "Faltan parámetros: origen, destino, fecha." });
+    }
+
+    // 1. Llamar al servicio que hace caching+scraping
+    const vuelosRaw = await getFlights(origen, destino, fecha);
+    const vuelos = vuelosRaw.map((f) => ({
+      ...f,
+      priceClp: Number(f.priceClp),
+    }));
+
+    return res.json({ vuelos });
+  } catch (err) {
+    console.error("Error en GET /api/vuelos:", err);
+    return res.status(500).json({ error: "Error interno del servidor." });
+  }
+}
+
+
 module.exports = {
   getPlanes,
   createPlane,
@@ -94,4 +120,6 @@ module.exports = {
   deletePlane,
   deleteAllPlanes,
   importarDesdeExcel,
+  importarPlanes,
+  getCommercialPlanes
 };
