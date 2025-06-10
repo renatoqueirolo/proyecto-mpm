@@ -851,6 +851,54 @@ async function agregarTrabajadorATurno(req, res) {
   }
 }
 
+async function eliminarTrabajadorTurno(req, res) {
+  try {
+    const { id } = req.params;
+
+    // Verifica existencia previa
+    const existente = await prisma.trabajadorTurno.findUnique({ where: { id } });
+    if (!existente) {
+      return res.status(404).json({ error: "TrabajadorTurno no encontrado" });
+    }
+
+    await prisma.trabajadorTurno.delete({ where: { id } });
+
+    res.status(204).send(); // No Content
+  } catch (error) {
+    console.error("Error al eliminar TrabajadorTurno:", error);
+    res.status(500).json({ error: "Error interno al eliminar TrabajadorTurno" });
+  }
+}
+
+async function editarTrabajadorTurno(req, res) {
+  try {
+    const { id } = req.params;
+    const { acercamiento, origen, destino, region, subida } = req.body;
+
+    // Verifica existencia previa
+    const existente = await prisma.trabajadorTurno.findUnique({ where: { id } });
+    if (!existente) {
+      return res.status(404).json({ error: "TrabajadorTurno no encontrado" });
+    }
+
+    const actualizado = await prisma.trabajadorTurno.update({
+      where: { id },
+      data: {
+        acercamiento,
+        origen,
+        destino,
+        region,
+        subida,
+      },
+    });
+
+    res.status(200).json({ message: "TrabajadorTurno actualizado", trabajadorTurno: actualizado });
+  } catch (error) {
+    console.error("Error al editar TrabajadorTurno:", error);
+    res.status(500).json({ error: "Error interno al editar TrabajadorTurno" });
+  }
+}
+
 
 // Asingar los aviones de un turno
 const asignarAvionesATurno = async (req, res) => {
@@ -1753,5 +1801,7 @@ module.exports = {
   obtenerCompatiblesTurnoPlane,
   intercambioAsignacionTurnoBus,
   intercambioAsignacionTurnoPlane,
-  agregarTrabajadorATurno
+  agregarTrabajadorATurno,
+  eliminarTrabajadorTurno,
+  editarTrabajadorTurno
 };

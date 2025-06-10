@@ -36,7 +36,9 @@ const {
   obtenerCompatiblesTurnoPlane,
   intercambioAsignacionTurnoBus,
   intercambioAsignacionTurnoPlane,
-  agregarTrabajadorATurno
+  agregarTrabajadorATurno,
+  eliminarTrabajadorTurno,
+  editarTrabajadorTurno
 } = require('../../controllers/turno/turno.controller');
 
 router.use(userMustBeLogged)
@@ -169,6 +171,8 @@ router.delete('/:id', eliminarTurno);
  */
 router.post('/:id/trabajadores', importarTrabajadoresAlTurno);
 router.post("/:id/trabajador", agregarTrabajadorATurno);
+router.delete('/trabajador-turno/:id', eliminarTrabajadorTurno);
+router.put('/trabajador-turno/:id', editarTrabajadorTurno);
 
 
 /**
