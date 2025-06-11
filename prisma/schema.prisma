@@ -109,6 +109,7 @@ model CapacidadTurno {
 
   @@unique([turnoId, region, capacidad], name: "turnoId_region_capacidad")
 }
+
 model Plane {
   id        String          @id @default(cuid())
   capacidad Int

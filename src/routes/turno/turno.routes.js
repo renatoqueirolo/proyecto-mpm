@@ -39,7 +39,10 @@ const {
   agregarTrabajadorATurno,
   eliminarTrabajadorTurno,
   editarTrabajadorTurno,
-  editarPlaneTurno
+  editarPlaneTurno,
+  eliminarPlaneTurno,
+  crearPlaneTurno,
+  obtenerPlaneTurno
 } = require('../../controllers/turno/turno.controller');
 
 router.use(userMustBeLogged)
@@ -175,6 +178,9 @@ router.post("/:id/trabajador", agregarTrabajadorATurno);
 router.delete('/trabajador-turno/:id', eliminarTrabajadorTurno);
 router.put('/trabajador-turno/:id', editarTrabajadorTurno);
 router.put('/plane-turnos/:id', editarPlaneTurno);
+router.delete('/plane-turnos/:id', eliminarPlaneTurno);
+router.post('/:turnoId/plane-turnos', crearPlaneTurno);
+router.get('/plane-turnos/:id', obtenerPlaneTurno);
 
 
 /**

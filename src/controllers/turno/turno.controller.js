@@ -1041,6 +1041,110 @@ const editarPlaneTurno = async (req, res) => {
   }
 };
 
+const obtenerPlaneTurno = async (req, res) => {
+  const { id } = req.params;
+
+  const planeTurno = await prisma.planeTurno.findUnique({
+    where: { id },
+    include: { plane: true },
+  });
+
+  if (!planeTurno) {
+    return res.status(404).json({ error: "PlaneTurno no encontrado" });
+  }
+
+  res.json(planeTurno);
+};
+
+
+const eliminarPlaneTurno = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar existencia
+    const existente = await prisma.planeTurno.findUnique({ where: { id } });
+    if (!existente) {
+      return res.status(404).json({ error: 'PlaneTurno no encontrado' });
+    }
+
+    // Eliminar
+    await prisma.planeTurno.delete({ where: { id } });
+
+    res.status(200).json({ message: 'PlaneTurno eliminado correctamente' });
+  } catch (error) {
+    console.error('Error al eliminar PlaneTurno:', error);
+    res.status(500).json({ error: 'Error interno al eliminar PlaneTurno' });
+  }
+};
+
+const crearPlaneTurno = async (req, res) => {
+  try {
+    const { turnoId } = req.params;
+    const {
+      ciudad_origen,
+      ciudad_destino,
+      capacidad,
+      horario_salida,
+      horario_llegada
+    } = req.body;
+
+    if (!ciudad_origen || !ciudad_destino || !horario_salida || !horario_llegada || !capacidad) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios para crear el avión' });
+    }
+
+    if (ciudad_origen === ciudad_destino) {
+      return res.status(400).json({ error: 'La ciudad de origen y destino no pueden ser iguales' });
+    }
+
+    const turno = await prisma.turno.findUnique({
+      where: { id: turnoId },
+      select: { fecha: true },
+    });
+
+    if (!turno) {
+      return res.status(404).json({ error: 'Turno no encontrado' });
+    }
+
+    const fechaTurno = new Date(turno.fecha);
+
+    const construirFechaHora = (fechaBase, horaStr) => {
+      const [hh, mm] = horaStr.split(":").map(Number);
+      const minutosTotales = hh * 60 + mm;
+      const sumarDia = minutosTotales < 780; // antes de las 13:00
+      const fechaBaseAjustada = new Date(fechaBase);
+      if (sumarDia) fechaBaseAjustada.setDate(fechaBaseAjustada.getDate() + 1);
+      fechaBaseAjustada.setHours(hh + 20, mm, 0, 0);
+      return fechaBaseAjustada;
+    };
+
+    const plane = await prisma.plane.create({
+      data: {
+        ciudad_origen,
+        ciudad_destino,
+        capacidad,
+        horario_salida,
+        horario_llegada,
+      }
+    });
+
+    const planeTurno = await prisma.planeTurno.create({
+      data: {
+        planeId: plane.id,
+        turnoId,
+        capacidad,
+        horario_salida: construirFechaHora(fechaTurno, horario_salida),
+        horario_llegada: construirFechaHora(fechaTurno, horario_llegada),
+      }
+    });
+
+    res.status(201).json({ message: 'Avión y asignación creados correctamente', planeTurno });
+  } catch (error) {
+    console.error('Error al crear PlaneTurno:', error);
+    res.status(500).json({ error: 'Error interno al crear PlaneTurno' });
+  }
+};
+
+
 
 // Ejecutar modelo de optimización 
 async function optimizarTurno(req, res) {
@@ -1855,5 +1959,8 @@ module.exports = {
   agregarTrabajadorATurno,
   eliminarTrabajadorTurno,
   editarTrabajadorTurno,
-  editarPlaneTurno
+  editarPlaneTurno,
+  eliminarPlaneTurno,
+  crearPlaneTurno,
+  obtenerPlaneTurno
 };
