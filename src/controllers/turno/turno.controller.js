@@ -975,7 +975,7 @@ const asignarAvionesATurno = async (req, res) => {
         data: {
           planeId: avion.planeId,
           turnoId,
-          capacidad: plane.capacidad,
+          capacidad: avion.capacidad ?? plane.capacidad,
           horario_salida: salidaDT,
           horario_llegada: llegadaDT,
         }
@@ -987,6 +987,57 @@ const asignarAvionesATurno = async (req, res) => {
   } catch (error) {
     console.error('Error al asignar aviones al turno:', error);
     res.status(500).json({ error: 'Error interno al asignar aviones al turno' });
+  }
+};
+
+const editarPlaneTurno = async (req, res) => {
+  try {
+    const { id: planeTurnoId } = req.params;
+    const { capacidad, horario_salida, horario_llegada } = req.body;
+
+    if (!horario_salida || !horario_llegada) {
+      return res.status(400).json({ error: 'Debe proporcionar ambos horarios (salida y llegada)' });
+    }
+
+    // Obtener planeTurno con su turno asociado
+    const planeTurno = await prisma.planeTurno.findUnique({
+      where: { id: planeTurnoId },
+      include: { turno: { select: { fecha: true } } },
+    });
+
+    if (!planeTurno) {
+      return res.status(404).json({ error: 'PlaneTurno no encontrado' });
+    }
+
+    const fechaTurno = new Date(planeTurno.turno.fecha);
+
+    // Reutilizamos la lógica para construir datetime a partir de fecha + hora
+    const construirFechaHora = (fechaBase, horaStr) => {
+      const [hh, mm] = horaStr.split(":").map(Number);
+      const minutosTotales = hh * 60 + mm;
+      const sumarDia = minutosTotales < 780; // antes de las 13:00
+      const fechaBaseAjustada = new Date(fechaBase);
+      if (sumarDia) fechaBaseAjustada.setDate(fechaBaseAjustada.getDate() + 1);
+      fechaBaseAjustada.setHours(hh + 20, mm, 0, 0);
+      return fechaBaseAjustada;
+    };
+
+    const nuevaSalida = construirFechaHora(fechaTurno, horario_salida);
+    const nuevaLlegada = construirFechaHora(fechaTurno, horario_llegada);
+
+    const actualizado = await prisma.planeTurno.update({
+      where: { id: planeTurnoId },
+      data: {
+        capacidad,
+        horario_salida: nuevaSalida,
+        horario_llegada: nuevaLlegada,
+      }
+    });
+
+    res.status(200).json({ message: 'Avión actualizado exitosamente', actualizado });
+  } catch (error) {
+    console.error('Error al editar avión del turno:', error);
+    res.status(500).json({ error: 'Error interno al editar avión del turno' });
   }
 };
 
@@ -1803,5 +1854,6 @@ module.exports = {
   intercambioAsignacionTurnoPlane,
   agregarTrabajadorATurno,
   eliminarTrabajadorTurno,
-  editarTrabajadorTurno
+  editarTrabajadorTurno,
+  editarPlaneTurno
 };
