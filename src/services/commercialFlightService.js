@@ -75,8 +75,8 @@ function normalizeFlights(rawArray) {
     destination: f.destination,
     // Convertir strings ISO a Date
     departureDate: new Date(f.departureDate),
-    departureTime: new Date(fixTimestamp(f.departureTime)),
-    arrivalTime: new Date(fixTimestamp(f.arrivalTime)),
+    horario_salida: f.horario_salida.slice(0, 5),
+    horario_llegada: f.horario_llegada.slice(0, 5),
     durationMinutes: f.durationMinutes,
     priceClp: BigInt(f.priceClp),
     direct: f.direct,
@@ -118,7 +118,7 @@ async function getFlights(origen, destino, fecha) {
         departureDate: new Date(fecha),
       },
       orderBy: {
-        departureTime: "asc",
+        horario_salida: "asc",
       },
     });
 
@@ -129,8 +129,8 @@ async function getFlights(origen, destino, fecha) {
       origin: f.origin,
       destination: f.destination,
       departureDate: f.departureDate,
-      departureTime: f.departureTime,
-      arrivalTime: f.arrivalTime,
+      horario_salida: f.horario_salida,
+      horario_llegada: f.horario_llegada,
       durationMinutes: f.durationMinutes,
       priceClp: f.priceClp,
       direct: f.direct,
@@ -158,8 +158,8 @@ async function getFlights(origen, destino, fecha) {
       },
       update: {
         // Lo que cambia: horarios, precio, disponibilidad, stopsDetail, createdAt
-        departureTime: f.departureTime,
-        arrivalTime: f.arrivalTime,
+        horario_salida: f.horario_salida,
+        horario_llegada: f.horario_llegada,
         durationMinutes: f.durationMinutes,
         priceClp: f.priceClp,
         direct: f.direct,
@@ -174,8 +174,8 @@ async function getFlights(origen, destino, fecha) {
         origin: f.origin,
         destination: f.destination,
         departureDate: f.departureDate,
-        departureTime: f.departureTime,
-        arrivalTime: f.arrivalTime,
+        horario_salida: f.horario_salida,
+        horario_llegada: f.horario_llegada,
         durationMinutes: f.durationMinutes,
         priceClp: f.priceClp,
         direct: f.direct,
@@ -198,7 +198,7 @@ async function getFlights(origen, destino, fecha) {
       },
     },
     orderBy: {
-      departureTime: "asc",
+      horario_salida: "asc",
     },
   });
 
@@ -208,8 +208,8 @@ async function getFlights(origen, destino, fecha) {
     origin: f.origin,
     destination: f.destination,
     departureDate: f.departureDate,
-    departureTime: f.departureTime,
-    arrivalTime: f.arrivalTime,
+    horario_salida: f.horario_salida,
+    horario_llegada: f.horario_llegada,
     durationMinutes: f.durationMinutes,
     priceClp: f.priceClp,
     direct: f.direct,

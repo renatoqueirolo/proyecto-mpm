@@ -35,28 +35,24 @@ def normalize_raw_flight(v: Dict) -> Dict:
     hora_salida = v.get("hora_salida")                     # "07:45"
     hora_llegada = v.get("hora_llegada")                   # "10:40"
 
-    departure_date_iso = fecha_str                          # usaremos "YYYY-MM-DD"
-    # Para departureTime y arrivalTime generamos un ISO completo:
-    departure_time_iso = f"{fecha_str}T{hora_salida}:00"
-    arrival_time_iso = f"{fecha_str}T{hora_llegada}:00"
-
-    # 2. Cantidad de paradas (stops) y detalle de paradas (stopsDetail)
-    paradas = v.get("paradas", [])  # lista de paradas; cada elemento puede ser, por ejemplo, {"aeropuerto": "...", "duracion_minutos": 45}
-    stops_count = len(paradas)
-
+    # Validar si los campos existen y son correctos
+    if not fecha_str or not hora_salida or not hora_llegada:
+        print(f"⚠️ Error: Faltan campos en el vuelo. Fecha salida: {fecha_str}, Hora salida: {hora_salida}, Hora llegada: {hora_llegada}")
+    
+    # Aquí, antes de devolver la respuesta, simplemente omite las líneas que imprimen datos de depuración
     return {
         "airline":        v.get("aerolinea", "").strip().title(),
         "flightCode":     v.get("codigo_vuelo", "").strip(),
         "origin":         v.get("origen", "").strip(),
         "destination":    v.get("destino", "").strip(),
-        "departureDate":  departure_date_iso,
-        "departureTime":  departure_time_iso,
-        "arrivalTime":    arrival_time_iso,
+        "departureDate":  fecha_str,
+        "horario_salida":  str(hora_salida),
+        "horario_llegada": str(hora_llegada),
         "durationMinutes": int(v.get("duracion_minutos", 0)),
         "priceClp":       int(v.get("precio_total_clp", 0)),
         "direct":         bool(v.get("directo", False)),
-        "stops":          stops_count,
-        "stopsDetail":    paradas, 
+        "stops":          len(v.get("paradas", [])),
+        "stopsDetail":    v.get("paradas", []), 
         "seatsAvailable": int(v.get("asientos_disponibles", 0))
     }
 
@@ -80,7 +76,7 @@ def main():
         normalizados.append(normalize_raw_flight(v))
 
     # 3. (Opcional) ordenar por departureTime
-    normalizados.sort(key=lambda x: x["departureTime"])
+    normalizados.sort(key=lambda x: x["horario_salida"])
 
     # 4. Imprimir por stdout el JSON unificado
     print(json.dumps(normalizados, ensure_ascii=False))

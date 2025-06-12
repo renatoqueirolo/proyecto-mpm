@@ -128,8 +128,8 @@ model CommercialPlane {
   origin           String
   destination      String
   departureDate    DateTime 
-  departureTime    DateTime  
-  arrivalTime      DateTime
+  horario_salida   String  
+  horario_llegada  String
   durationMinutes  Int
   priceClp         BigInt
   direct           Boolean
