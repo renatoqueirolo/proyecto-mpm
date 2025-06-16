@@ -168,6 +168,146 @@ async function obtenerAvionesTurno(req, res) {
   }
 }
 
+async function obtenerCapacidadAvionesTurno(req, res) {
+  try {
+    // 1. Agrupar por planeId y sumar la capacidad de los aviones
+    const avionesPorCombinacion = await prisma.planeTurno.groupBy({
+      by: ['planeId'], // Agrupamos por planeId
+      _sum: {
+        capacidad: true, // Sumamos la capacidad de los aviones
+      },
+    });
+
+    // 2. Obtener los detalles de los aviones (ciudad_origen y ciudad_destino)
+    const planeIds = avionesPorCombinacion.map((avion) => avion.planeId);
+    
+    // Obtener los detalles de los aviones por planeId
+    const planes = await prisma.plane.findMany({
+      where: {
+        id: {
+          in: planeIds, // Filtrar por los planeIds que hemos agrupado
+        },
+      },
+      select: {
+        id: true,
+        ciudad_origen: true,
+        ciudad_destino: true,
+      },
+    });
+
+    // 3. Mapear los resultados agrupados con los detalles de los aviones
+    const resultado = avionesPorCombinacion.map((avion) => {
+      const plane = planes.find((p) => p.id === avion.planeId);
+      return {
+        origenDestino: `${plane.ciudad_origen} → ${plane.ciudad_destino}`,
+        capacidadTotal: avion._sum.capacidad,
+      };
+    });
+
+    // 4. Eliminar duplicados usando un objeto como un Set
+    const resultadoUnico = [];
+    const seen = new Set();
+
+    for (const item of resultado) {
+      const key = item.origenDestino;
+      if (!seen.has(key)) {
+        seen.add(key);
+        resultadoUnico.push(item);
+      }
+    }
+
+    // 5. Devolver el resultado único
+    res.json(resultadoUnico);
+  } catch (error) {
+    console.error("Error al obtener capacidad de aviones por combinación:", error);
+    res.status(500).json({ error: 'Error al obtener capacidad de aviones por combinación' });
+  }
+}
+
+async function obtenerCapacidadUsadaPorCombinacion(req, res) {
+  try {
+    const { id } = req.params; // El id del turno
+
+    // Primero obtenemos los aviones agrupados por planeId y sumamos la capacidad para el turno específico
+    const avionesPorCombinacion = await prisma.planeTurno.groupBy({
+      by: ["planeId"], // Agrupar por planeId
+      _sum: {
+        capacidad: true,  // Sumar la capacidad de los aviones
+      },
+      where: {
+        turnoId: id,  // Filtrar por el turno específico
+      }
+    });
+
+    // Obtener los detalles del avión (origen y destino) usando los planeId para el turno específico
+    const planeIds = avionesPorCombinacion.map((avion) => avion.planeId);
+
+    // Obtener los detalles de los aviones por planeId (origen y destino)
+    const avionesDetalles = await prisma.plane.findMany({
+      where: {
+        id: { in: planeIds },  // Filtrar por los planeIds obtenidos
+      },
+      select: {
+        id: true,
+        ciudad_origen: true,
+        ciudad_destino: true,
+      },
+    });
+
+    // Obtener la cantidad de trabajadores con origen y destino similar (convertidos a mayúsculas) para el turno específico
+    const trabajadoresPorCombinacion = await prisma.trabajadorTurno.groupBy({
+      by: ["origen", "destino"],  // Agrupar por origen y destino de los trabajadores
+      _count: {
+        id: true,  // Contar los trabajadores por combinación de origen y destino
+      },
+      where: {
+        turnoId: id,  // Filtrar por el turno específico
+      }
+    });
+
+    // Unir los resultados de la capacidad de los aviones con los detalles de los trabajadores
+    const resultado = avionesPorCombinacion.map((avion) => {
+      const avionDetalle = avionesDetalles.find((plane) => plane.id === avion.planeId);
+      
+      // Convertir origen y destino de los aviones y trabajadores a mayúsculas para compararlos
+      const origenDestino = `${avionDetalle.ciudad_origen.toUpperCase()} → ${avionDetalle.ciudad_destino.toUpperCase()}`;
+
+      // Buscar el conteo de trabajadores con ese origen y destino
+      const trabajadoresCombinacion = trabajadoresPorCombinacion.find((trabajador) => {
+        return trabajador.origen.toUpperCase() === avionDetalle.ciudad_origen.toUpperCase() &&
+               trabajador.destino.toUpperCase() === avionDetalle.ciudad_destino.toUpperCase();
+      });
+
+      return {
+        origenDestino: origenDestino,
+        capacidadTotal: avion._sum.capacidad,
+        trabajadoresTotales: trabajadoresCombinacion ? trabajadoresCombinacion._count.id : 0,  // Usar el conteo de trabajadores o 0 si no existe
+      };
+    });
+
+    // Eliminar duplicados usando un objeto Set
+    const resultadoUnico = [];
+    const seen = new Set();
+
+    for (const item of resultado) {
+      const key = item.origenDestino;
+      if (!seen.has(key)) {
+        seen.add(key);
+        resultadoUnico.push(item);
+      }
+    }
+
+    // Devolver el resultado único
+    res.json(resultadoUnico);
+  } catch (error) {
+    console.error("Error al obtener capacidad de aviones por combinación:", error);
+    res.status(500).json({ error: 'Error al obtener capacidad de aviones por combinación' });
+  }
+}
+
+
+
+
 async function obtenerBusesTurno(req, res) {
   try {
     const { id } = req.params;
@@ -1922,6 +2062,7 @@ async function actualizarParametrosModeloTurno(req, res) {
 }
 
 
+
 module.exports = {
   crearTurno,
   obtenerTurnos,
@@ -1962,5 +2103,7 @@ module.exports = {
   editarPlaneTurno,
   eliminarPlaneTurno,
   crearPlaneTurno,
-  obtenerPlaneTurno
+  obtenerPlaneTurno,
+  obtenerCapacidadAvionesTurno,
+  obtenerCapacidadUsadaPorCombinacion
 };

@@ -42,7 +42,9 @@ const {
   editarPlaneTurno,
   eliminarPlaneTurno,
   crearPlaneTurno,
-  obtenerPlaneTurno
+  obtenerPlaneTurno,
+  obtenerCapacidadAvionesTurno,
+  obtenerCapacidadUsadaPorCombinacion
 } = require('../../controllers/turno/turno.controller');
 
 router.use(userMustBeLogged)
@@ -138,6 +140,8 @@ router.put('/:id', editarTurno);
  *         description: Eliminado exitosamente
  */
 router.delete('/:id', eliminarTurno);
+router.get('/:id/capacidad-aviones', obtenerCapacidadAvionesTurno);
+router.get("/:id/capacidad-aviones-usada", obtenerCapacidadUsadaPorCombinacion);
 
 /**
  * @swagger
@@ -181,6 +185,7 @@ router.put('/plane-turnos/:id', editarPlaneTurno);
 router.delete('/plane-turnos/:id', eliminarPlaneTurno);
 router.post('/:turnoId/plane-turnos', crearPlaneTurno);
 router.get('/plane-turnos/:id', obtenerPlaneTurno);
+
 
 
 /**
