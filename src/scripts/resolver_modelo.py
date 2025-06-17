@@ -76,7 +76,7 @@ df_planes = pd.read_sql(f'''
         PT."horario_llegada",
         P."ciudad_origen",
         P."ciudad_destino",
-        P."capacidad"
+        PT."capacidad"
     FROM "PlaneTurno" PT
     JOIN "Plane" P ON PT."planeId" = P."id"
     WHERE PT."turnoId" = '{turno_id}';
@@ -91,6 +91,32 @@ df_capacidad_usada_aviones = pd.read_sql(f'''
     WHERE TT."turnoId" = '{turno_id}'
     GROUP BY AP."planeTurnoId";
 ''', engine)
+
+#vuelos comerciales
+df_commercial_planes = pd.read_sql(f'''
+    SELECT
+      "id",
+      "airline",
+      "flightCode",
+      "origin",
+      "destination",
+      "departureDate",
+      "departureTime",
+      "arrivalTime",
+      "durationMinutes",
+      "priceClp",
+      "direct",
+      "stops",
+      "stopsDetail",
+      "seatsAvailable"
+    FROM "CommercialPlane"
+    WHERE "turnoId" = '{turno_id}'
+    ORDER BY "departureTime" ASC;
+''', engine)
+
+print(f"Commercial planes for turno {turno_id}:")
+print(df_commercial_planes)
+
 
 # -------------------------
 # Preprocesamiento
@@ -114,20 +140,13 @@ trabajadores_con_avion_ids = set(df_trabajadores_con_avion["trabajador_id"])
 # Sobrescribimos a 0 para quienes tienen avión asignado
 df_trabajadores.loc[df_trabajadores["trabajador_id"].isin(trabajadores_con_avion_ids), "use_plane"] = 0
 
-# -------------------------
-# Parámetros
-# -------------------------
-trabajadores = df_trabajadores["trabajador_id"].tolist()
-comunas_trabajadores = df_trabajadores.set_index("trabajador_id")["acercamiento"].to_dict()
-destino_trabajadores = df_trabajadores.set_index("trabajador_id")["destino"].to_dict()
-origen_trabajadores = df_trabajadores.set_index("trabajador_id")["origen"].to_dict()
-region_trabajadores = df_trabajadores.set_index("trabajador_id")["region"].to_dict()
-use_plane_trabajadores = df_trabajadores.set_index("trabajador_id")["use_plane"].to_dict()
-use_bus_trabajadores = df_trabajadores.set_index("trabajador_id")["use_bus"].to_dict()
-usadas_dict = df_capacidad_usada_aviones.set_index("planeTurnoId")["capacidad_usada"].to_dict()
 
+# -------------------------
+# Capacidad Disponible
+# -------------------------
 buses = df_buses["id"].tolist()
 vuelos = df_planes["plane_turno_id"].tolist()
+usadas_dict = df_capacidad_usada_aviones.set_index("planeTurnoId")["capacidad_usada"].to_dict()
 CB = df_buses.set_index("id")["capacidad"].to_dict()
 
 CVtotal = df_planes.set_index("plane_turno_id")["capacidad"].to_dict()
@@ -136,6 +155,83 @@ CV = {
     for plane_id in CVtotal
 }
 print(CV)
+
+# --------------------------------------
+#Comercial Planes
+# --------------------------------------
+
+# Agrupo la capacidad disponible por (origen, destino)
+df_plane_capacity = (
+    df_planes
+    .assign(capacidad_restante=lambda df: df['plane_turno_id'].map(CV))
+    .groupby(['ciudad_origen', 'ciudad_destino'])['capacidad_restante']
+    .sum()
+    .reset_index(name='capacidad_total')
+)
+print(df_plane_capacity)
+
+# Para cada grupo origen–destino, elijo:
+#    - primero todos los de la Región Metropolitana (13)
+#    - luego los otros, hasta agotar la capacidad
+df_demand = df_trabajadores[df_trabajadores['use_plane'] == 1]
+asignados_por_origen_dest = {}
+
+for _, row in df_plane_capacity.iterrows():
+    o = row['ciudad_origen']
+    d = row['ciudad_destino']
+    cap = int(row['capacidad_total'])
+    
+    # Demanda de ese grupo
+    grupo = df_demand[
+        (df_demand['origen'] == o) &
+        (df_demand['destino'] == d)
+    ]
+    
+    # Si la demanda cabe, asigno todos
+    if len(grupo) <= cap:
+        asign_ids = grupo['trabajador_id'].tolist()
+    else:
+        # 3.1) Primero RM (región 13)
+        rm = grupo[grupo['region'] == 13]['trabajador_id'].tolist()
+        asign_ids = rm[:cap]
+        
+        # 3.2) Si aún quedan cupos, agrego otros hasta llenar
+        faltantes = cap - len(asign_ids)
+        if faltantes > 0:
+            otros = grupo[~grupo['trabajador_id'].isin(asign_ids)]
+            asign_ids += otros['trabajador_id'].tolist()[:faltantes]
+    
+    asignados_por_origen_dest[(o, d)] = asign_ids
+
+# 1) Obtener el listado de todos los IDs asignados a avión
+assigned_ids = [
+    trab_id 
+    for ids in asignados_por_origen_dest.values() 
+    for trab_id in ids
+]
+
+# 3) DataFrame de quienes NO tienen transporte (ni avión ni bus)
+df_trabajadores_vuelos_comerciales = df_trabajadores[
+    ~df_trabajadores["trabajador_id"].isin(assigned_ids)
+]
+
+# Quitar los que viajaran en vuelos comerciales de df_trabajadores
+not_assigned_ids = set(df_trabajadores_vuelos_comerciales["trabajador_id"])
+df_trabajadores = df_trabajadores[
+    ~df_trabajadores["trabajador_id"].isin(not_assigned_ids)
+].reset_index(drop=True)
+
+# -------------------------
+# Parámetros
+# -------------------------
+
+trabajadores = df_trabajadores["trabajador_id"].tolist()
+comunas_trabajadores = df_trabajadores.set_index("trabajador_id")["acercamiento"].to_dict()
+destino_trabajadores = df_trabajadores.set_index("trabajador_id")["destino"].to_dict()
+origen_trabajadores = df_trabajadores.set_index("trabajador_id")["origen"].to_dict()
+region_trabajadores = df_trabajadores.set_index("trabajador_id")["region"].to_dict()
+use_plane_trabajadores = df_trabajadores.set_index("trabajador_id")["use_plane"].to_dict()
+use_bus_trabajadores = df_trabajadores.set_index("trabajador_id")["use_bus"].to_dict()
 
 #Parametros modificables
 cursor.execute(
@@ -373,21 +469,6 @@ else:
 # -------------------------
 # Guardar Resultados
 # -------------------------
-# Limpiar asignaciones anteriores del turno
-# cursor.execute('''
-#     DELETE FROM "AssignmentBus"
-#     WHERE "busTurnoId" IN (
-#         SELECT id FROM "BusTurno" WHERE "turnoId" = %s
-#     )
-# ''', (turno_id,))
-
-# cursor.execute('''
-#     DELETE FROM "AssignmentPlane"
-#     WHERE "planeTurnoId" IN (
-#         SELECT id FROM "PlaneTurno" WHERE "turnoId" = %s
-#     )
-# ''', (turno_id,))
-# conn.commit()
 
 # Insertar asignaciones de bus
 for t in trabajadores:
