@@ -86,13 +86,19 @@ async function crearTurno(req, res) {
 // Obtener todos los turnos
 async function obtenerTurnos(req, res) {
   try {
-    const { proyectos } = req.user;
+    const { proyectos, role } = req.user;
+    
+    // Si el usuario es VISUALIZADOR, mostrar todos los turnos sin filtrar por proyectos
+    const whereClause = role === "VISUALIZADOR" 
+      ? {} 
+      : {
+          proyecto: {
+            in: proyectos,
+          },
+        };
+
     const turnos = await prisma.turno.findMany({
-      where: {
-        proyecto: {
-          in: proyectos, // 👈 Filtra sólo los que puede ver este usuario
-        },
-      },
+      where: whereClause,
       orderBy: { fecha: 'desc' },
       include: { 
         trabajadoresTurno: true,
