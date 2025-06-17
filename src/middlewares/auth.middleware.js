@@ -47,7 +47,25 @@ const userMustBeAdmin = (req, res, next) => {
   }
 };
 
+// Verifica que el usuario no sea un VISUALIZADOR para crear turnos
+const userCannotBeVisualizador = (req, res, next) => {
+  try {
+    console.log("Ejecutando middleware: verificar que el usuario no sea visualizador");
+
+    const user = req.user;
+    if (user && user.role.toLowerCase() === "visualizador") {
+      throw new Error("Los visualizadores no pueden crear turnos");
+    }
+
+    next();
+  } catch (error) {
+    console.error("Error en userCannotBeVisualizador:", error.message);
+    return res.status(403).json({ error: error.message });
+  }
+};
+
 module.exports = {
   userMustBeLogged,
   userMustBeAdmin,
+  userCannotBeVisualizador,
 };

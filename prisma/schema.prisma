@@ -28,6 +28,7 @@ model User {
 enum RolUsuario {
   ADMIN
   EJECUTIVO
+  VISUALIZADOR
 }
 
 model Trabajador {

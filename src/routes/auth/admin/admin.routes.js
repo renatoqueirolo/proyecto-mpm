@@ -11,9 +11,11 @@ const {
   updatePlane,
   importarDesdeExcel
 } = require('../../../controllers/auth/admin/admin.controller');
+const { crearTurno } = require('../../../controllers/turno/turno.controller');
 const {
   userMustBeAdmin,
   userMustBeLogged,
+  userCannotBeVisualizador,
 } = require('../../../middlewares/auth.middleware');
 
 const router = express.Router();
@@ -176,5 +178,6 @@ router.delete('/planes/:id', deletePlane);
  */
 router.post('/planes/import', importarDesdeExcel);
 
+router.post('/turnos', userMustBeLogged, userCannotBeVisualizador, crearTurno);
 
 module.exports = router;

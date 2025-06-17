@@ -2,6 +2,8 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const bcrypt = require('bcrypt');
 
+const ALL_PROJECTS = ["ESCONDIDA", "SPENCE", "EL_TENIENTE"];
+
 const getUsers = async (_req, res) => {
   try {
     const users = await prisma.user.findMany();
@@ -16,7 +18,7 @@ const getUsers = async (_req, res) => {
 
 const createUser = async (req, res) => {
   try {
-    const { email, password, name, role } = req.body;
+    const { email, password, name, role, proyectos } = req.body;
     if (!email || !password || !name || !role) {
       throw new Error("Todos los campos son obligatorios.");
     }
@@ -25,8 +27,10 @@ const createUser = async (req, res) => {
       throw new Error("El email ya está en uso.");
     }
     const hashedPassword = await bcrypt.hash(password, 10);
+    // Si el rol es VISUALIZADOR, asignar todos los proyectos automáticamente
+    const proyectosToSave = role === "VISUALIZADOR" ? ALL_PROJECTS : proyectos;
     const newUser = await prisma.user.create({
-      data: { email, password: hashedPassword, name, role },
+      data: { email, password: hashedPassword, name, role, proyectos: proyectosToSave },
     });
     return res.json(newUser);
   } catch (error) {
@@ -55,9 +59,11 @@ const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, email, proyectos, role } = req.body;
+    // Si el rol es VISUALIZADOR, asignar todos los proyectos automáticamente
+    const proyectosToSave = role === "VISUALIZADOR" ? ALL_PROJECTS : proyectos;
     const updatedUser = await prisma.user.update({
       where: { id: id },
-      data: { name, email, proyectos, role },
+      data: { name, email, proyectos: proyectosToSave, role },
     });
     return res.status(200).json({ message: "Usuario actualizado correctamente.", updatedUser });
   } catch (error) {
