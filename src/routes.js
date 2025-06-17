@@ -16,5 +16,8 @@ router.use('/dashboard', dashboardRoutes);
 const turnosRoutes = require('./routes/turno/turno.routes')
 router.use('/turnos', turnosRoutes);
 
+const trabajadorRoutes = require('./routes/trabajador/trabajador.routes');
+router.use('/trabajadores', trabajadorRoutes);
+
 
 module.exports = router;
