@@ -59,9 +59,11 @@ const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, email, proyectos, role } = req.body;
+    // Si el rol es VISUALIZADOR, asignar todos los proyectos automáticamente
+    const proyectosToSave = role === "VISUALIZADOR" ? ALL_PROJECTS : proyectos;
     const updatedUser = await prisma.user.update({
       where: { id: id },
-      data: { name, email, proyectos, role },
+      data: { name, email, proyectos: proyectosToSave, role },
     });
     return res.status(200).json({ message: "Usuario actualizado correctamente.", updatedUser });
   } catch (error) {
