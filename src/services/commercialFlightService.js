@@ -93,131 +93,114 @@ function normalizeFlights(rawArray) {
  * - Si no, llama al scraper, borra los vuelos viejos de esa ruta+fecha,
  *   los inserta con createdAt=now() y devuelve el conjunto recién insertado.
  */
-async function getFlights(origen, destino, fecha) {
-  // 1. Calcular “hace 12 horas”
+async function getFlights(origen, destino, fecha, turnoId) {
+  // 1. Calculamos “hace 12 horas”
   const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
 
-  // 2. Consultar cuántos vuelos “recientes” existen para esta ruta+fecha
+  // 2. ¿Hay datos recientes?
   const countRecent = await prisma.commercialPlane.count({
     where: {
       origin: origen,
       destination: destino,
       departureDate: new Date(fecha),
-      createdAt: {
-        gte: twelveHoursAgo,
-      },
+      createdAt: { gte: twelveHoursAgo },
     },
   });
 
   if (countRecent > 0) {
-    // 2a. Devuelve todos los vuelos de esa ruta+fecha, ordenados por hora de salida
+    // 2a. Devolvemos cache
     const cached = await prisma.commercialPlane.findMany({
       where: {
         origin: origen,
         destination: destino,
         departureDate: new Date(fecha),
       },
-      orderBy: {
-        departureTime: "asc",
-      },
+      orderBy: { departureTime: "asc" },
     });
 
-    // Transformamos a “tipo crudo” para que coincida con el retorno esperado
     return cached.map((f) => ({
-      airline: f.airline,
-      flightCode: f.flightCode,
-      origin: f.origin,
-      destination: f.destination,
-      departureDate: f.departureDate,
-      departureTime: f.departureTime,
-      arrivalTime: f.arrivalTime,
-      durationMinutes: f.durationMinutes,
+      ...f,
       priceClp: f.priceClp,
-      direct: f.direct,
-      stops: f.stops,
-      stopsDetail: f.stopsDetail,
-      seatsAvailable: f.seatsAvailable,
+      // (no necesitamos incluir turno aquí, ya viene en el registro)
     }));
   }
 
-  // 2b. No hay datos recientes → invocar el scraper en Python
+  // 2b. Scrape + normalize
   const rawAll = await callPythonScraper(origen, destino, fecha);
   const allFlights = normalizeFlights(rawAll);
 
-  // 3. Por cada vuelo scraped: hacer UPSERT en lugar de borrar + crear
+  // 3. Upsert cada vuelo, conectándolo al turno
   for (const f of allFlights) {
     await prisma.commercialPlane.upsert({
       where: {
-        // Índice único: (airline, flightCode, departureDate)
-        // Prisma espera que eso esté declarado así en schema.prisma:
         airline_flightCode_departureDate: {
-          airline: f.airline,
-          flightCode: f.flightCode,
+          airline:       f.airline,
+          flightCode:    f.flightCode,
           departureDate: f.departureDate,
         },
       },
       update: {
-        // Lo que cambia: horarios, precio, disponibilidad, stopsDetail, createdAt
-        departureTime: f.departureTime,
-        arrivalTime: f.arrivalTime,
+        departureTime:   f.departureTime,
+        arrivalTime:     f.arrivalTime,
         durationMinutes: f.durationMinutes,
-        priceClp: f.priceClp,
-        direct: f.direct,
-        stops: f.stops,
-        stopsDetail: f.stopsDetail,
-        seatsAvailable: f.seatsAvailable,
-        createdAt: new Date(), // marcamos como “fresco”
+        priceClp:        f.priceClp,
+        direct:          f.direct,
+        stops:           f.stops,
+        stopsDetail:     f.stopsDetail,
+        seatsAvailable:  f.seatsAvailable,
+        createdAt:       new Date(),
+        // ► nos aseguramos de mantener la relación
+        turnoId,
       },
       create: {
-        airline: f.airline,
-        flightCode: f.flightCode,
-        origin: f.origin,
-        destination: f.destination,
-        departureDate: f.departureDate,
-        departureTime: f.departureTime,
-        arrivalTime: f.arrivalTime,
+        airline:         f.airline,
+        flightCode:      f.flightCode,
+        origin:          f.origin,
+        destination:     f.destination,
+        departureDate:   f.departureDate,
+        departureTime:   f.departureTime,
+        arrivalTime:     f.arrivalTime,
         durationMinutes: f.durationMinutes,
-        priceClp: f.priceClp,
-        direct: f.direct,
-        stops: f.stops,
-        stopsDetail: f.stopsDetail,
-        seatsAvailable: f.seatsAvailable,
-        // createdAt usa el default @default(now())
+        priceClp:        f.priceClp,
+        direct:          f.direct,
+        stops:           f.stops,
+        stopsDetail:     f.stopsDetail,
+        seatsAvailable:  f.seatsAvailable,
+        // ► conectamos al turno
+        turno: { connect: { id: turnoId } },
       },
     });
   }
 
-  // 4. Ahora que hemos upserteado los “allFlights”, vamos a devolver solo los vuelos frescos:
+  // 4. Devolvemos los vuelos frescos
   const justInserted = await prisma.commercialPlane.findMany({
     where: {
       origin: origen,
       destination: destino,
       departureDate: new Date(fecha),
-      createdAt: {
-        gte: twelveHoursAgo,
-      },
+      createdAt: { gte: twelveHoursAgo },
+      turnoId,  // opcional: filtrar sólo los de este turno
     },
-    orderBy: {
-      departureTime: "asc",
-    },
+    orderBy: { departureTime: "asc" },
   });
 
   return justInserted.map((f) => ({
-    airline: f.airline,
-    flightCode: f.flightCode,
-    origin: f.origin,
-    destination: f.destination,
-    departureDate: f.departureDate,
-    departureTime: f.departureTime,
-    arrivalTime: f.arrivalTime,
-    durationMinutes: f.durationMinutes,
-    priceClp: f.priceClp,
-    direct: f.direct,
-    stops: f.stops,
-    stopsDetail: f.stopsDetail,
+    airline:        f.airline,
+    flightCode:     f.flightCode,
+    origin:         f.origin,
+    destination:    f.destination,
+    departureDate:  f.departureDate,
+    departureTime:  f.departureTime,
+    arrivalTime:    f.arrivalTime,
+    durationMinutes:f.durationMinutes,
+    priceClp:       f.priceClp,
+    direct:         f.direct,
+    stops:          f.stops,
+    stopsDetail:    f.stopsDetail,
     seatsAvailable: f.seatsAvailable,
   }));
 }
+
 
 module.exports = {
   getFlights,

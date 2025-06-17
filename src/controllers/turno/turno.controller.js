@@ -2,7 +2,7 @@ const ExcelJS = require('exceljs');
 const { execFile } = require('child_process');
 const path = require('path');
 const PdfPrinter = require('pdfmake');;
-
+const { getFlights } = require('../../services/commercialFlightService');
 const { PrismaClient, ShiftType } = require('@prisma/client');
 const prisma = new PrismaClient();
 
@@ -82,6 +82,67 @@ async function crearTurno(req, res) {
   }
 }
 
+const getCommercialPlanes = async (req, res) => {
+  try {
+    // 1) Leer turnoId en lugar de id
+    const { turnoId } = req.params;
+    const { origen, destino, fecha } = req.query;
+
+    // 2) Parámetros obligatorios
+    if (!turnoId || !origen || !destino || !fecha) {
+      return res.status(400).json({
+        error: 'Faltan parámetros: turnoId (ruta), origen, destino o fecha.'
+      });
+    }
+
+    // 3) Validar que el turno exista
+    const turno = await prisma.turno.findUnique({
+      where: { id: turnoId },
+      select: { id: true }
+    });
+    if (!turno) {
+      return res.status(404).json({ error: 'Turno no encontrado.' });
+    }
+
+    // 4) Llamar al servicio de scraping + cache
+    const vuelosRaw = await getFlights(origen, destino, fecha, turnoId);
+
+    // 5) Normalizar precios y adjuntar turnoId
+    const vuelos = vuelosRaw.map(f => ({
+      airline:         f.airline,
+      flightCode:      f.flightCode,
+      origin:          f.origin,
+      destination:     f.destination,
+      departureDate:   new Date(f.departureDate),
+      departureTime:   new Date(f.departureTime),
+      arrivalTime:     new Date(f.arrivalTime),
+      durationMinutes: f.durationMinutes,
+      priceClp:        f.priceClp.toString(),
+      direct:          f.direct,
+      stops:           f.stops,
+      stopsDetail:     f.stopsDetail,
+      seatsAvailable:  f.seatsAvailable,
+
+      // ← clave foránea para asociar al turno
+      turnoId,
+    }));
+
+    // 6) (Opcional) Persistencia con skipDuplicates:
+    // await prisma.commercialPlane.createMany({
+    //   data: vuelos,
+    //   skipDuplicates: true
+    // });
+
+    // 7) Devolver los vuelos
+    return res.json({ vuelos });
+
+  } catch (err) {
+    console.error('Error en GET /turnos/:turnoId/commercialPlanes:', err);
+    return res.status(500).json({
+      error: 'Error interno del servidor al obtener vuelos comerciales para el turno.'
+    });
+  }
+};
 
 // Obtener todos los turnos
 async function obtenerTurnos(req, res) {
@@ -2105,5 +2166,6 @@ module.exports = {
   crearPlaneTurno,
   obtenerPlaneTurno,
   obtenerCapacidadAvionesTurno,
-  obtenerCapacidadUsadaPorCombinacion
+  obtenerCapacidadUsadaPorCombinacion,
+  getCommercialPlanes
 };

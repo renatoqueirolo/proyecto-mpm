@@ -62,6 +62,7 @@ model Turno {
   trabajadoresTurno  TrabajadorTurno[]
   busTurno           BusTurno[]
   planeTurno         PlaneTurno[]
+  commercialPlanes   CommercialPlane[]
   parametrosModelo      ParametrosModeloTurno?
   historialAsignacion HistorialAsignacion[]
   CapacidadTurno     CapacidadTurno[]
@@ -137,6 +138,8 @@ model CommercialPlane {
   stopsDetail      Json?
   seatsAvailable   Int
   createdAt        DateTime  @default(now())
+  turnoId          String
+  turno            Turno      @relation(fields: [turnoId], references: [id])
 
   @@unique([airline, flightCode, departureDate], name: "airline_flightCode_departureDate") 
   @@index([origin, destination, departureDate])
