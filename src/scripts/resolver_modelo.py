@@ -367,19 +367,25 @@ for tc in trabajadores_comerciales:
     for b in buses:
         x[(tc, b)] = model.NewBoolVar(f'x_{tc}_{b}')
     for vc in vuelos_comerciales:
-        z[(tc, vc)] = model.NewBoolVar(f'y_{tc}_{vc}')
+        z[(tc, vc)] = model.NewBoolVar(f'z_{tc}_{vc}')
 
 # Restricción: use bus y use vuelo por trabajador según región
 for t in trabajadores:
     model.Add(sum(x[(t, b)] for b in buses) == use_bus_trabajadores[t])
     model.Add(sum(y[(t, v)] for v in vuelos) == use_plane_trabajadores[t])
 
+for tc in trabajadores_comerciales:
+    model.Add(sum(x[(tc, b)] for b in buses) == use_bus_trabajadores_comerciales[tc])
+    model.Add(sum(z[(tc, vc)] for vc in vuelos_comerciales) == use_plane_trabajadores_comerciales[tc])
+
 # Restricción: capacidad buses y vuelos
 for b in buses:
-    model.Add(sum(x[(t, b)] for t in trabajadores) <= CB[b])
+    model.Add(sum(x[(t, b)] for t in trabajadores) + sum(x[(tc, b)] for tc in trabajadores_comerciales) <= CB[b])
     HB_var[b] = model.NewIntVar(min_hora, max_hora, f'HB_{b}')
 for v in vuelos:
     model.Add(sum(y[(t, v)] for t in trabajadores) <= CV[v])
+for vc in vuelos_comerciales:
+    model.Add(sum(z[(tc, vc)] for tc in trabajadores_comerciales) <= C_CP[vc])
 
 # Restricción: compatibilidad de horario, origen y destino
 for t in trabajadores:
@@ -409,6 +415,34 @@ for t in trabajadores:
                         model.Add(HB_var[b] + espera_conexion_subida <= HV[v]).OnlyEnforceIf([x[(t, b)], y[(t, v)]])
                     else:
                         model.Add(HB_var[b] >= HV_bajada[v] + espera_conexion_bajada).OnlyEnforceIf([x[(t, b)], y[(t, v)]])
+
+for t in trabajadores_comerciales:
+    fila = df_trabajadores_vuelos_comerciales[df_trabajadores_vuelos_comerciales["trabajador_id"] == t].iloc[0]
+    subida = fila["subida"]
+
+    if use_bus_trabajadores_comerciales[t] ==1:
+        for b in buses:
+            if subida:
+                if normalizar(comunas_trabajadores_comerciales[t]) not in map(str.upper, comunas_origen_bus[b]):
+                    model.Add(x[(t, b)] == 0)
+            else:
+                if normalizar(comunas_trabajadores_comerciales[t]) not in map(str.upper, comunas_destino_bus[b]):
+                    model.Add(x[(t, b)] == 0)
+
+    if use_plane_trabajadores_comerciales[t] ==1:
+        for v in vuelos_comerciales:
+            if normalizar(origen_commercial_planes[v]) != (normalizar(origen_trabajadores_comerciales[t])):
+                model.Add(z[(t, v)] == 0)
+            if normalizar(destino_commercial_planes[v]) != (normalizar(destino_trabajadores_comerciales[t])):
+                model.Add(z[(t, v)] == 0)
+
+    # Restricción de conexión temporal
+            if use_bus_trabajadores_comerciales[t] ==1:
+                for b in buses:
+                    if subida:
+                        model.Add(HB_var[b] + espera_conexion_subida <= H_CP[v]).OnlyEnforceIf([x[(t, b)], z[(t, v)]])
+                    else:
+                        model.Add(HB_var[b] >= H_CP_bajada[v] + espera_conexion_bajada).OnlyEnforceIf([x[(t, b)], z[(t, v)]])
 
 # -------------------------
 # Logs para depuración
@@ -481,11 +515,43 @@ for t in trabajadores:
                 # Agregar a la función objetivo
                 espera_total.append(espera)
 
+for t in trabajadores_comerciales:
+    if use_plane_trabajadores_comerciales[t] == 1 and use_bus_trabajadores_comerciales[t] == 1:
+        subida = df_trabajadores_vuelos_comerciales[df_trabajadores_vuelos_comerciales["trabajador_id"] == t]["subida"].values[0]
+        for b in buses:
+            if subida and normalizar(comunas_trabajadores_comerciales[t]) not in map(str.upper, comunas_origen_bus[b]):
+                continue
+            if not subida and normalizar(comunas_trabajadores_comerciales[t]) not in map(str.upper, comunas_destino_bus[b]):
+                continue
+
+            for v in vuelos_comerciales:
+                if normalizar(origen_commercial_planes[v]) != normalizar(origen_trabajadores_comerciales[t]):
+                    continue
+                if normalizar(destino_commercial_planes[v]) != normalizar(destino_trabajadores_comerciales[t]):
+                    continue
+                # Crear la variable de diferencia
+                diff_expr = H_CP[v] - HB_var[b] if subida else HB_var[b] - H_CP_bajada[v]
+
+                # Crear variable de combinación
+                comb = model.NewBoolVar(f'c_{t}_{b}_{v}')
+                comb_vars[(t, b, v)] = comb
+                model.AddBoolAnd([x[(t, b)], z[(t, v)]]).OnlyEnforceIf(comb)
+                model.AddBoolOr([x[(t, b)].Not(), z[(t, v)].Not()]).OnlyEnforceIf(comb.Not())
+
+                # Crear variable de espera condicional
+                espera = model.NewIntVar(-1440, 1440, f'espera_{t}_{b}_{v}')
+                model.Add(espera == diff_expr).OnlyEnforceIf(comb)
+                model.Add(espera == 0).OnlyEnforceIf(comb.Not())
+
+                # Agregar a la función objetivo
+                espera_total.append(espera)
+
 model.Minimize(sum(espera_total))
 
 # Chequeo: variables que fueron creadas
 print(f"\n📦 Variables x creadas: {len(x)}")
 print(f"📦 Variables y creadas: {len(y)}")
+print(f"📦 Variables z creadas: {len(z)}")
 print(f"📦 Variables HB_var creadas: {len(HB_var)}")
 print(f"📦 Variables comb creadas: {len(comb_vars)}")
 print(f"📦 Variables espera creadas: {len(espera_total)}")
@@ -559,6 +625,14 @@ for t in trabajadores:
         if solver.Value(y[(t, v)]):
             cursor.execute('''
                 INSERT INTO "AssignmentPlane" (id, "trabajadorTurnoId", "planeTurnoId")
+                VALUES (%s, %s, %s)
+            ''', (str(uuid4()), t, v))
+
+for t in trabajadores_comerciales:
+    for v in vuelos_comerciales:
+        if solver.Value(z[(t, v)]):
+            cursor.execute('''
+                INSERT INTO "AssignmentCommercialPlane" (id, "trabajadorTurnoId", "commercialPlaneId")
                 VALUES (%s, %s, %s)
             ''', (str(uuid4()), t, v))
 
