@@ -2,11 +2,16 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const bcrypt = require('bcrypt');
 
-const ALL_PROJECTS = ["ESCONDIDA", "SPENCE", "EL_TENIENTE"];
-
 const getUsers = async (_req, res) => {
   try {
-    const users = await prisma.user.findMany();
+    const users = await prisma.user.findMany({
+      include: {
+        proyectos: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
     return res.json(users);
   } catch (error) {
     console.error("Error al obtener usuarios ->", error.message);
@@ -27,10 +32,31 @@ const createUser = async (req, res) => {
       throw new Error("El email ya está en uso.");
     }
     const hashedPassword = await bcrypt.hash(password, 10);
-    // Si el rol es VISUALIZADOR, asignar todos los proyectos automáticamente
-    const proyectosToSave = role === "VISUALIZADOR" ? ALL_PROJECTS : proyectos;
+    console.log(`Proyectos recibidos al crear usuario: ${JSON.stringify(proyectos)}`);
+
+    let projectsToConnect = [];
+    if (role === "VISUALIZADOR" || role === "ADMIN") {
+      // Si el rol es VISUALIZADOR o ADMIN, asignar todos los proyectos automáticamente
+      const allProjects = await prisma.project.findMany();
+      projectsToConnect = allProjects.map(project => ({ id: project.id }));
+    } else if (proyectos && proyectos.length > 0) {
+      // Si se proporcionan proyectos específicos, conectarlos
+      // Tratamos cada elemento como un ID directamente, sin asumir que es un objeto
+      projectsToConnect = proyectos.map(projectId => ({ id: projectId }));
+    } else {
+      // Si no se especifican proyectos, dejar el array vacío
+      projectsToConnect = [];
+    }
     const newUser = await prisma.user.create({
-      data: { email, password: hashedPassword, name, role, proyectos: proyectosToSave },
+      data: { 
+        email, 
+        password: hashedPassword, 
+        name, 
+        role, 
+        proyectos: { 
+          connect: projectsToConnect
+        } 
+      },
     });
     return res.json(newUser);
   } catch (error) {
@@ -44,7 +70,7 @@ const createUser = async (req, res) => {
 const getUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await prisma.user.findUnique({ where: { id: id } });
+    const user = await prisma.user.findUnique({ where: { id: id }, include: { proyectos: true } });
     if (!user) throw new Error("El usuario con el ID señalado no existe.");
     return res.json(user);
   } catch (error) {
@@ -59,11 +85,45 @@ const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, email, proyectos, role } = req.body;
-    // Si el rol es VISUALIZADOR, asignar todos los proyectos automáticamente
-    const proyectosToSave = role === "VISUALIZADOR" ? ALL_PROJECTS : proyectos;
-    const updatedUser = await prisma.user.update({
-      where: { id: id },
-      data: { name, email, proyectos: proyectosToSave, role },
+    let projectsToConnect = [];
+    if (role === "VISUALIZADOR" || role === "ADMIN") {
+      // Si el rol es VISUALIZADOR o ADMIN, asignar todos los proyectos automáticamente
+      const allProjects = await prisma.project.findMany();
+      projectsToConnect = allProjects.map(project => ({ id: project.id }));
+    } else if (proyectos && proyectos.length > 0) {
+      // Si se proporcionan proyectos específicos, conectarlos
+      // Tratamos cada elemento como un ID directamente, sin asumir que es un objeto
+      projectsToConnect = proyectos.map(projectId => ({ id: projectId }));
+    } else {
+      // Si no se especifican proyectos, dejar el array vacío
+      projectsToConnect = [];
+    }
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      // 1. First disconnect all existing projects
+      await tx.user.update({
+        where: { id },
+        data: {
+          proyectos: {
+            set: [] // This clears all current connections
+          }
+        }
+      });
+      
+      // 2. Then connect the new projects
+      return tx.user.update({
+        where: { id },
+        data: { 
+          name, 
+          email,
+          role,
+          proyectos: { 
+            connect: projectsToConnect 
+          }
+        },
+        include: {
+          proyectos: true
+        }
+      });
     });
     return res.status(200).json({ message: "Usuario actualizado correctamente.", updatedUser });
   } catch (error) {
