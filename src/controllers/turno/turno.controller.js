@@ -1431,7 +1431,32 @@ async function obtenerAsignacionesDeTurno(req, res) {
       }
     });
 
-    res.json({ buses, vuelos });
+    const vuelosComercialesRaw = await prisma.assignmentCommercialPlane.findMany({
+      where: {
+        commercialPlane: {
+          turnoId: id
+        }
+      },
+      include: {
+        commercialPlane: true,
+        trabajadorTurno: {
+          include: {
+            trabajador: true
+          }
+        }
+      }
+    });
+
+    // Convertir BigInt a Number (u opcionalmente a String si son muy grandes)
+    const vuelos_comerciales = vuelosComercialesRaw.map(vc => ({
+      ...vc,
+      commercialPlane: {
+        ...vc.commercialPlane,
+        priceClp: Number(vc.commercialPlane.priceClp)
+      }
+    }));
+
+    res.json({ buses, vuelos, vuelos_comerciales });
   } catch (error) {
     console.error("Error al obtener asignaciones:", error);
     res.status(500).json({ error: 'Error al obtener asignaciones' });
