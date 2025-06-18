@@ -42,7 +42,13 @@ const {
   editarPlaneTurno,
   eliminarPlaneTurno,
   crearPlaneTurno,
-  obtenerPlaneTurno
+  obtenerPlaneTurno,
+  obtenerCapacidadAvionesTurno,
+  obtenerCapacidadUsadaPorCombinacion,
+  getCommercialPlanes,
+  agregarAsignacionTurnoCommercialPlane,
+  obtenerAsignacionTurnoCommercialPlane,
+  eliminarAsignacionTurnoCommercialPlane
 } = require('../../controllers/turno/turno.controller');
 
 router.use(userMustBeLogged)
@@ -138,6 +144,8 @@ router.put('/:id', editarTurno);
  *         description: Eliminado exitosamente
  */
 router.delete('/:id', eliminarTurno);
+router.get('/:id/capacidad-aviones', obtenerCapacidadAvionesTurno);
+router.get("/:id/capacidad-aviones-usada", obtenerCapacidadUsadaPorCombinacion);
 
 /**
  * @swagger
@@ -181,6 +189,8 @@ router.put('/plane-turnos/:id', editarPlaneTurno);
 router.delete('/plane-turnos/:id', eliminarPlaneTurno);
 router.post('/:turnoId/plane-turnos', crearPlaneTurno);
 router.get('/plane-turnos/:id', obtenerPlaneTurno);
+router.get('/:turnoId/commercialPlanes', getCommercialPlanes);
+
 
 
 /**
@@ -381,6 +391,12 @@ router.get('/:id/asignaciones/bus/:busTurnoId', obtenerAsignacionTurnoBus);
 
 router.get('/:id/asignaciones/vuelo/:planeTurnoId', obtenerAsignacionTurnoPlane);
 
+// asignaciones commercialplane
+router.get('/:turnoId/commercialPlanes/:commercialPlaneId/assignments',obtenerAsignacionTurnoCommercialPlane);
+router.post('/:turnoId/commercialPlanes/:commercialPlaneId/assignments',agregarAsignacionTurnoCommercialPlane);
+router.delete('/:turnoId/commercialPlanes/:commercialPlaneId/assignments/:trabajadorTurnoId',eliminarAsignacionTurnoCommercialPlane);
+
+//Intercambio
 router.get('/:id/asignaciones/bus/compatibles/:trabajadorTurnoId', obtenerCompatiblesTurnoBus);
 
 router.get('/:id/asignaciones/vuelo/compatibles/:trabajadorTurnoId', obtenerCompatiblesTurnoPlane);
@@ -388,6 +404,10 @@ router.get('/:id/asignaciones/vuelo/compatibles/:trabajadorTurnoId', obtenerComp
 router.put('/:id/asignaciones/bus/intercambio', intercambioAsignacionTurnoBus);
 
 router.put('/:id/asignaciones/vuelo/intercambio', intercambioAsignacionTurnoPlane);
+
+
+
+
 
 /**
  * @swagger

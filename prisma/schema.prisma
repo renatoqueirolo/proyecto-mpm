@@ -71,7 +71,8 @@ model Turno {
   trabajadoresTurno  TrabajadorTurno[]
   busTurno           BusTurno[]
   planeTurno         PlaneTurno[]
-  parametrosModelo   ParametrosModeloTurno?
+  commercialPlanes   CommercialPlane[]
+  parametrosModelo      ParametrosModeloTurno?
   historialAsignacion HistorialAsignacion[]
   CapacidadTurno     CapacidadTurno[]
 }
@@ -91,6 +92,7 @@ model TrabajadorTurno {
 
   assignmentBuses   AssignmentBus[]
   assignmentPlanes  AssignmentPlane[]
+  assignmentCommercialPlanes AssignmentCommercialPlane[]
 }
 
 
@@ -146,6 +148,10 @@ model CommercialPlane {
   stopsDetail      Json?
   seatsAvailable   Int
   createdAt        DateTime  @default(now())
+  turnoId          String
+  turno            Turno      @relation(fields: [turnoId], references: [id])
+
+  assignmentCommercialPlanes AssignmentCommercialPlane[]
 
   @@unique([airline, flightCode, departureDate], name: "airline_flightCode_departureDate") 
   @@index([origin, destination, departureDate])
@@ -182,6 +188,18 @@ model AssignmentPlane {
 
   trabajadorTurno      TrabajadorTurno @relation(fields: [trabajadorTurnoId], references: [id], onDelete: Cascade)
   planeTurno       PlaneTurno      @relation(fields: [planeTurnoId], references: [id], onDelete: Cascade)
+}
+
+model AssignmentCommercialPlane {
+  id                  String            @id @default(cuid())
+  trabajadorTurnoId   String
+  commercialPlaneId   Int
+
+  trabajadorTurno     TrabajadorTurno   @relation(fields: [trabajadorTurnoId], references: [id], onDelete: Cascade)
+  commercialPlane     CommercialPlane   @relation(fields: [commercialPlaneId], references: [id], onDelete: Cascade)
+
+  @@index([trabajadorTurnoId])
+  @@index([commercialPlaneId])
 }
 
 model ParametrosModeloTurno {

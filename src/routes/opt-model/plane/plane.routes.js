@@ -6,8 +6,7 @@ const {
   updatePlane,
   deletePlane,
   deleteAllPlanes,
-  importarDesdeExcel,
-  getCommercialPlanes,
+  importarDesdeExcel
 } = require('../../../controllers/opt-model/plane/plane.controller');
 
 /**
@@ -113,7 +112,6 @@ router.post('/import', importarDesdeExcel);
  *       500:
  *         description: Error al obtener los aviones comerciales
  */
-router.get('/commercial', getCommercialPlanes);
 
 
 
