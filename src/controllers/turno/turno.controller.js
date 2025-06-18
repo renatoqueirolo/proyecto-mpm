@@ -2122,6 +2122,127 @@ async function actualizarParametrosModeloTurno(req, res) {
   }
 }
 
+//Comercial Planes Assignment
+
+async function obtenerAsignacionTurnoCommercialPlane(req, res) {
+  try {
+    const { turnoId, commercialPlaneId } = req.params;
+
+    // 1) Validar existencia del vuelo comercial
+    const commercialPlane = await prisma.commercialPlane.findUnique({
+      where: { id: Number(commercialPlaneId) },
+      include: { turno: true }
+    });
+    if (!commercialPlane || commercialPlane.turnoId !== turnoId) {
+      return res.status(404).json({ error: 'CommercialPlane no encontrado en este turno' });
+    }
+
+    // 2) Leer asignaciones existentes
+    const asignados = await prisma.assignmentCommercialPlane.findMany({
+      where: { commercialPlaneId: Number(commercialPlaneId) },
+      include: {
+        trabajadorTurno: {
+          include: { trabajador: true }
+        },
+        commercialPlane: true
+      }
+    });
+
+    // 3) Determinar “subida” igual que hacías para PlaneTurno
+    const subida = commercialPlane.origin.toUpperCase().includes("SANTIAGO");
+    const filtroAcercamiento = subida
+      ? { destino: commercialPlane.destination.toUpperCase() }
+      : { origen: commercialPlane.origin.toUpperCase() };
+
+    // 4) Listar trabajadoresTurno disponibles en este turno y que cumplan filtro
+    const trabajadoresDisponibles = await prisma.trabajadorTurno.findMany({
+      where: {
+        turnoId,
+        ...filtroAcercamiento
+      },
+      include: { trabajador: true }
+    });
+
+    // 5) Excluir a los ya asignados
+    const idsAsignados = new Set(
+      asignados.map(a => a.trabajadorTurno.trabajador.id)
+    );
+    const filtrados = trabajadoresDisponibles.filter(
+      t => !idsAsignados.has(t.trabajador.id)
+    );
+
+    return res.status(200).json({
+      subida,
+      trabajadoresDisponibles: filtrados,
+      asignados
+    });
+  } catch (error) {
+    console.error("Error en GET assignments CommercialPlane:", error);
+    return res.status(500).json({ error: 'Error interno al obtener asignaciones' });
+  }
+}
+
+/**
+ * POST /turnos/:turnoId/commercialPlanes/:commercialPlaneId/assignments
+ * Body: { trabajadorTurnoId: string }
+ */
+async function agregarAsignacionTurnoCommercialPlane(req, res) {
+  try {
+    const { turnoId, commercialPlaneId } = req.params;
+    const { trabajadorTurnoId } = req.body;
+
+    // Opcional: validar que el comercialPlane y el trabajadorTurno pertenezcan a ese turno
+    const cp = await prisma.commercialPlane.findUnique({
+      where: { id: Number(commercialPlaneId) },
+    });
+    if (!cp || cp.turnoId !== turnoId) {
+      return res.status(404).json({ error: 'CommercialPlane no existe o no es de este turno' });
+    }
+
+    // Crear la asignación
+    const nueva = await prisma.assignmentCommercialPlane.create({
+      data: {
+        commercialPlaneId: Number(commercialPlaneId),
+        trabajadorTurnoId
+      }
+    });
+
+    return res.status(201).json(nueva);
+  } catch (error) {
+    console.error("Error en POST assignment CommercialPlane:", error);
+    return res.status(500).json({ error: 'Error al crear asignación' });
+  }
+}
+
+/**
+ * DELETE /turnos/:turnoId/commercialPlanes/:commercialPlaneId/assignments/:trabajadorTurnoId
+ */
+async function eliminarAsignacionTurnoCommercialPlane(req, res) {
+  try {
+    const { turnoId, commercialPlaneId, trabajadorTurnoId } = req.params;
+
+    // Opcional: validar que el vuelo comercial pertenezca al turno
+    const cp = await prisma.commercialPlane.findUnique({
+      where: { id: Number(commercialPlaneId) },
+    });
+    if (!cp || cp.turnoId !== turnoId) {
+      return res.status(404).json({ error: 'CommercialPlane no encontrado en este turno' });
+    }
+
+    // Eliminar la asignación específica
+    await prisma.assignmentCommercialPlane.deleteMany({
+      where: {
+        commercialPlaneId: Number(commercialPlaneId),
+        trabajadorTurnoId
+      }
+    });
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error("Error en DELETE assignment CommercialPlane:", error);
+    return res.status(500).json({ error: 'Error al eliminar asignación' });
+  }
+}
 
 
 module.exports = {
@@ -2167,5 +2288,8 @@ module.exports = {
   obtenerPlaneTurno,
   obtenerCapacidadAvionesTurno,
   obtenerCapacidadUsadaPorCombinacion,
-  getCommercialPlanes
+  getCommercialPlanes,
+  agregarAsignacionTurnoCommercialPlane,
+  eliminarAsignacionTurnoCommercialPlane,
+  obtenerAsignacionTurnoCommercialPlane
 };

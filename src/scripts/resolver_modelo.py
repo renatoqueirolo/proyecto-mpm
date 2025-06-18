@@ -114,9 +114,6 @@ df_commercial_planes = pd.read_sql(f'''
     ORDER BY "departureTime" ASC;
 ''', engine)
 
-print(f"Commercial planes for turno {turno_id}:")
-print(df_commercial_planes)
-
 
 # -------------------------
 # Preprocesamiento
@@ -128,6 +125,15 @@ df_trabajadores["region"] = df_trabajadores["region"].apply(normalizar)
 df_trabajadores["region"] = df_trabajadores["region"].map(romanos_a_enteros)
 df_planes["ciudad_origen"] = df_planes["ciudad_origen"].apply(normalizar)
 df_planes["ciudad_destino"] = df_planes["ciudad_destino"].apply(normalizar)
+
+#commercialplanes
+df_commercial_planes["origin"] = df_commercial_planes["origin"].apply(normalizar)
+df_commercial_planes["destination"] = df_commercial_planes["destination"].apply(normalizar)
+iata_map = {"SCL": "SANTIAGO","ANF": "ANTOFAGASTA","CJC": "CALAMA"}
+# Reemplazar en columnas origin y destination
+df_commercial_planes["origin"] = df_commercial_planes["origin"].replace(iata_map)
+df_commercial_planes["destination"] = df_commercial_planes["destination"].replace(iata_map)
+
 df_buses["comunas_origen"] = df_buses["comunas_origen"].apply(lambda x: [normalizar(c) for c in json.loads(x)])
 df_buses["comunas_destino"] = df_buses["comunas_destino"].apply(lambda x: [normalizar(c) for c in json.loads(x)])
 
@@ -135,10 +141,6 @@ df_buses["comunas_destino"] = df_buses["comunas_destino"].apply(lambda x: [norma
 df_trabajadores["use_plane"] = df_trabajadores["region"].apply(lambda r: 0 if r in [1, 2, 3, 4, 15] else 1)
 # use_bus: 1 para todas excepto RM (13), que es 0
 df_trabajadores["use_bus"] = df_trabajadores["region"].apply(lambda r: 0 if r == 13 else 1)
-
-trabajadores_con_avion_ids = set(df_trabajadores_con_avion["trabajador_id"])
-# Sobrescribimos a 0 para quienes tienen avión asignado
-df_trabajadores.loc[df_trabajadores["trabajador_id"].isin(trabajadores_con_avion_ids), "use_plane"] = 0
 
 
 # -------------------------
@@ -224,14 +226,30 @@ df_trabajadores = df_trabajadores[
 # -------------------------
 # Parámetros
 # -------------------------
-
+#charter
 trabajadores = df_trabajadores["trabajador_id"].tolist()
+
+#trabajadores_con_avion_ids = set(df_trabajadores_con_avion["trabajador_id"])
+# Sobrescribimos a 0 para quienes tienen avión asignado
+#df_trabajadores.loc[df_trabajadores["trabajador_id"].isin(trabajadores_con_avion_ids), "use_plane"] = 0
+
 comunas_trabajadores = df_trabajadores.set_index("trabajador_id")["acercamiento"].to_dict()
 destino_trabajadores = df_trabajadores.set_index("trabajador_id")["destino"].to_dict()
 origen_trabajadores = df_trabajadores.set_index("trabajador_id")["origen"].to_dict()
 region_trabajadores = df_trabajadores.set_index("trabajador_id")["region"].to_dict()
 use_plane_trabajadores = df_trabajadores.set_index("trabajador_id")["use_plane"].to_dict()
 use_bus_trabajadores = df_trabajadores.set_index("trabajador_id")["use_bus"].to_dict()
+
+#vuelos comerciales
+trabajadores_comerciales = df_trabajadores_vuelos_comerciales["trabajador_id"].tolist()
+df_trabajadores_vuelos_comerciales["use_plane"] = df_trabajadores_vuelos_comerciales["region"].apply(lambda r: 0 if r in [1, 2, 3, 4, 15] else 1)
+df_trabajadores_vuelos_comerciales["use_bus"] = df_trabajadores_vuelos_comerciales["region"].apply(lambda r: 0 if r == 13 else 1)
+comunas_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("trabajador_id")["acercamiento"].to_dict()
+destino_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("trabajador_id")["destino"].to_dict()
+origen_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("trabajador_id")["origen"].to_dict()
+region_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("trabajador_id")["region"].to_dict()
+use_plane_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("trabajador_id")["use_plane"].to_dict()
+use_bus_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("trabajador_id")["use_bus"].to_dict()
 
 #Parametros modificables
 cursor.execute(
@@ -267,6 +285,8 @@ def datetime_to_minutos(horario_dt: datetime, fecha_base: datetime):
         minutos += 24 * 60  # sumar 24h si el vuelo es del día siguiente
     return minutos
 
+
+#planeturnos
 HV = {
     row["plane_turno_id"]: datetime_to_minutos(row["horario_salida"], fecha_turno)
     for _, row in df_planes.iterrows()
@@ -277,11 +297,54 @@ HV_bajada = {
     for _, row in df_planes.iterrows()
 }
 
+#commercialplanes
 
+#Validación de hora
+print("Cantidad de vuelos comerciales:", len(df_commercial_planes))
+def vuelo_valido(row):
+    id = row["id"]
+    destino = row["destination"]
+    origen = row["origin"]
+    hora_salida = datetime_to_minutos(row["departureTime"], fecha_turno)
+    hora_llegada = datetime_to_minutos(row["arrivalTime"], fecha_turno)
+
+    es_santiago = destino == "SANTIAGO" or origen == "SANTIAGO"
+
+    if es_santiago:
+        if hora_salida < min_hora or hora_salida > max_hora:
+            return False
+        if hora_llegada < min_hora or hora_llegada > max_hora:
+            return False
+    return True
+
+# Filtrar DataFrame
+df_commercial_planes = df_commercial_planes[df_commercial_planes.apply(vuelo_valido, axis=1)].reset_index(drop=True)
+print("Cantidad de vuelos comerciales:", len(df_commercial_planes))
+vuelos_comerciales = df_commercial_planes["id"].tolist()
+
+C_CP = df_commercial_planes.set_index("id")["seatsAvailable"].to_dict() #capacidad
+H_CP = {
+    row["id"]: datetime_to_minutos(row["departureTime"], fecha_turno)
+    for _, row in df_commercial_planes.iterrows()
+}
+
+H_CP_bajada = {
+    row["id"]: datetime_to_minutos(row["arrivalTime"], fecha_turno)
+    for _, row in df_commercial_planes.iterrows()
+}
+
+#buses
 comunas_origen_bus = df_buses.set_index("id")["comunas_origen"].apply(lambda x: x if isinstance(x, list) else json.loads(x)).to_dict()
 comunas_destino_bus = df_buses.set_index("id")["comunas_destino"].apply(lambda x: x if isinstance(x, list) else json.loads(x)).to_dict()
+
+#planeturno
 origen_planes = df_planes.set_index("plane_turno_id")["ciudad_origen"].str.upper().to_dict()
 destino_planes = df_planes.set_index("plane_turno_id")["ciudad_destino"].str.upper().to_dict()
+#commercialplanes
+origen_commercial_planes = df_commercial_planes.set_index("id")["origin"].str.upper().to_dict()
+destino_commercial_planes = df_commercial_planes.set_index("id")["destination"].str.upper().to_dict()
+
+print(destino_commercial_planes)
 
 # -------------------------
 # Modelo OR-Tools
@@ -291,6 +354,7 @@ model = cp_model.CpModel()
 #Restricciones y Variables
 x = {}
 y = {}
+z = {}
 HB_var = {}
 
 for t in trabajadores:
@@ -298,6 +362,12 @@ for t in trabajadores:
         x[(t, b)] = model.NewBoolVar(f'x_{t}_{b}')
     for v in vuelos:
         y[(t, v)] = model.NewBoolVar(f'y_{t}_{v}')
+
+for tc in trabajadores_comerciales:
+    for b in buses:
+        x[(tc, b)] = model.NewBoolVar(f'x_{tc}_{b}')
+    for vc in vuelos_comerciales:
+        z[(tc, vc)] = model.NewBoolVar(f'y_{tc}_{vc}')
 
 # Restricción: use bus y use vuelo por trabajador según región
 for t in trabajadores:
@@ -420,9 +490,13 @@ print(f"📦 Variables HB_var creadas: {len(HB_var)}")
 print(f"📦 Variables comb creadas: {len(comb_vars)}")
 print(f"📦 Variables espera creadas: {len(espera_total)}")
 
-print("🔍 Total trabajadores:", len(trabajadores))
+print("🔍 Total trabajadores:", len(trabajadores)+len(trabajadores_comerciales))
+print("  - Total trabajadores (vuelos charter):", len(trabajadores))
+print("  - Total trabajadores (vuelos comerciales):", len(trabajadores_comerciales))
 print("🔍 Total buses:", len(buses))
-print("🔍 Total vuelos:", len(vuelos))
+print("🔍 Total vuelos:", len(vuelos)+len(vuelos_comerciales))
+print("  - Total vuelos charter:", len(vuelos))
+print("  - Total vuelos comerciales:", len(vuelos_comerciales))
 print("🔍 Capacidad total buses:", sum(CB.values()))
 print("🔍 Capacidad total vuelos:", sum(CVtotal.values()))
 
