@@ -611,8 +611,14 @@ else:
 # -------------------------
 
 # Insertar asignaciones de bus
-for t in trabajadores:
-    for b in buses:
+for b in buses:
+    for t in trabajadores:
+        if solver.Value(x[(t, b)]):
+            cursor.execute('''
+                INSERT INTO "AssignmentBus" (id, "trabajadorTurnoId", "busTurnoId")
+                VALUES (%s, %s, %s)
+            ''', (str(uuid4()), t, b))
+    for t in trabajadores_comerciales:
         if solver.Value(x[(t, b)]):
             cursor.execute('''
                 INSERT INTO "AssignmentBus" (id, "trabajadorTurnoId", "busTurnoId")

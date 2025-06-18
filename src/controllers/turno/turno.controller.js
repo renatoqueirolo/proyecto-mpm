@@ -1494,6 +1494,10 @@ async function eliminarAsignacionesDelTurno(req, res) {
       where: { trabajadorTurnoId: { in: trabajadorTurnoIds } }
     });
 
+    await prisma.assignmentCommercialPlane.deleteMany({
+      where: { trabajadorTurnoId: { in: trabajadorTurnoIds } }
+    });
+
     // 3. Actualizar el turno: modeloEjecutado = false
     await prisma.turno.update({
       where: { id: turnoId },
