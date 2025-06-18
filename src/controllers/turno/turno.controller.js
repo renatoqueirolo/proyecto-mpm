@@ -3,7 +3,7 @@ const { execFile } = require('child_process');
 const path = require('path');
 const PdfPrinter = require('pdfmake');;
 
-const { PrismaClient, ShiftType } = require('@prisma/client');
+const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 // Crear turno
@@ -13,9 +13,20 @@ async function crearTurno(req, res) {
     if (!fecha || !creadoPorId || !proyecto || !tipoTurno)
       return res.status(400).json({ error: 'Faltan campos requeridos' });
 
-    let tipoTurnoType;
-    if (tipoTurno == "14x14") tipoTurnoType = ShiftType.FOURTEEN_FOURTEEN
-    else if (tipoTurno == "7x7") tipoTurnoType = ShiftType.SEVEN_SEVEN
+    const projectObj = await prisma.project.findUnique({
+      where: { name: proyecto }
+    });
+
+    const shiftTypeObj = await prisma.shiftType.findUnique({
+      where: { name: tipoTurno }
+    });
+
+    if (!projectObj || !shiftTypeObj) {
+      return res.status(400).json({ 
+        error: 'Proyecto o tipo de turno no encontrado',
+        details: !projectObj ? 'Proyecto inválido' : 'Tipo de turno inválido'
+      });
+    }
 
     const creadoPorIdString = creadoPorId.toString();
 
@@ -32,8 +43,8 @@ async function crearTurno(req, res) {
           nombre: nombre,
           fecha: new Date(fecha),
           creadoPorId: creadoPorIdString,
-          proyecto: proyecto,
-          tipoTurno: tipoTurnoType,
+          proyectoId: projectObj.id,
+          tipoTurnoId: shiftTypeObj.id,
           modeloEjecutado: false,
         },
       });
@@ -88,15 +99,31 @@ async function obtenerTurnos(req, res) {
   try {
     const { proyectos, role } = req.user;
     
-    // Si el usuario es VISUALIZADOR, mostrar todos los turnos sin filtrar por proyectos
-    const whereClause = role === "VISUALIZADOR" 
-      ? {} 
-      : {
-          proyecto: {
-            in: proyectos,
-          },
-        };
+    // Prepare the where clause based on projects
+    let whereClause = {};
+    
+    // If the user is not a VISUALIZADOR, filter by projects
+    if (role !== "VISUALIZADOR") {
+      // Get all the project IDs from the names in proyectos array
+      const projectsData = await prisma.project.findMany({
+        where: {
+          name: {
+            in: proyectos.map(p => typeof p === 'object' ? p.name : p)
+          }
+        },
+        select: { id: true }
+      });
+      
+      const projectIds = projectsData.map(p => p.id);
+      
+      whereClause = {
+        proyectoId: {
+          in: projectIds
+        }
+      };
+    }
 
+    // Get all turnos with related data
     const turnos = await prisma.turno.findMany({
       where: whereClause,
       orderBy: { fecha: 'desc' },
@@ -104,11 +131,22 @@ async function obtenerTurnos(req, res) {
         trabajadoresTurno: true,
         busTurno: true,
         planeTurno: true,
-        creadoPor: true
+        creadoPor: true,
+        proyecto: true,  // Include Project
+        tipoTurno: true  // Include ShiftType
       },
     });
-    res.json(turnos);
+    
+    // Transform the data to match the previous format expected by the frontend
+    const transformedTurnos = turnos.map(turno => ({
+      ...turno,
+      proyecto: turno.proyecto.name,     // Use project name instead of ID
+      tipoTurno: turno.tipoTurno.name    // Use shiftType name instead of ID
+    }));
+    
+    res.json(transformedTurnos);
   } catch (error) {
+    console.error('Error al obtener turnos:', error);
     res.status(500).json({ error: 'Error al obtener turnos' });
   }
 }
@@ -121,6 +159,8 @@ async function obtenerTurno(req, res) {
       where: { id },
       include: {
         creadoPor: true,
+        proyecto: true,
+        tipoTurno: true,
         trabajadoresTurno: {
           include: {
             trabajador: true,
@@ -136,7 +176,12 @@ async function obtenerTurno(req, res) {
       },
     });
     if (!turno) return res.status(404).json({ error: 'Turno no encontrado' });
-    res.json(turno);
+    const transformedTurno = {
+      ...turno,
+      proyecto: turno.proyecto.name,
+      tipoTurno: turno.tipoTurno.name
+    };
+    res.json(transformedTurno);
   } catch (error) {
     res.status(500).json({ error: 'Error al obtener turno' });
   }
@@ -213,10 +258,24 @@ async function editarTurno(req, res) {
     const diffMs = nuevaFecha.getTime() - fechaOriginal.getTime();
     const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24)); // diferencia en días
 
+    const projectObj = await prisma.project.findUnique({
+      where: { name: proyecto }
+    });
+
+    const shiftTypeObj = await prisma.shiftType.findUnique({
+      where: { name: tipoTurno }
+    });
+
+    if (!projectObj || !shiftTypeObj) {
+      return res.status(400).json({ 
+        error: 'Proyecto o tipo de turno no encontrado'
+      });
+    }
+
     // 1. Actualizar todos los parametros del turno
     await prisma.turno.update({
       where: { id },
-      data: { fecha: nuevaFecha, nombre: nombre, proyecto: proyecto, tipoTurno: tipoTurno },
+      data: { fecha: nuevaFecha, nombre: nombre, proyectoId: projectObj.id, tipoTurnoId: shiftTypeObj.id },
     });
 
     // Si no hay cambio en días, no es necesario actualizar planes

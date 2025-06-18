@@ -39,31 +39,39 @@ model Trabajador {
   historialAsignacion HistorialAsignacion[]
 }
 
-enum Project {
-  ESCONDIDA
-  SPENCE
-  EL_TENIENTE
+model Project {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  turnos      Turno[]
+  users       User[]
 }
 
-enum ShiftType {
-  FOURTEEN_FOURTEEN @map("14x14")
-  SEVEN_SEVEN       @map("7x7")
+model ShiftType {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  turnos      Turno[]
 }
 
 model Turno {
   id                 String             @id @default(cuid())
   nombre             String
-  proyecto           Project
-  tipoTurno          ShiftType
+  proyectoId         String             
+  proyecto           Project            @relation(fields: [proyectoId], references: [id])
+  tipoTurnoId        String             
+  tipoTurno          ShiftType          @relation(fields: [tipoTurnoId], references: [id])
   fecha              DateTime
   modeloEjecutado    Boolean
   creadoEn           DateTime           @default(now())
   creadoPorId        String
-  creadoPor   User @relation("TurnosDelUsuario", fields: [creadoPorId], references: [id])
+  creadoPor          User               @relation("TurnosDelUsuario", fields: [creadoPorId], references: [id])
   trabajadoresTurno  TrabajadorTurno[]
   busTurno           BusTurno[]
   planeTurno         PlaneTurno[]
-  parametrosModelo      ParametrosModeloTurno?
+  parametrosModelo   ParametrosModeloTurno?
   historialAsignacion HistorialAsignacion[]
   CapacidadTurno     CapacidadTurno[]
 }
