@@ -15,9 +15,16 @@ import psutil
 
 process = psutil.Process(os.getpid())
 mem_inicial = process.memory_info().rss / (1024 * 1024)  # en MB
+print("----------------------------------------------------------------------------------")
 print(f"🔍 Memoria inicial usada por el proceso: {mem_inicial:.2f} MB")
 
 start_time = time.time()
+
+def datetime_to_minutos(horario_dt: datetime, fecha_base: datetime):
+    minutos = horario_dt.hour * 60 + horario_dt.minute
+    if horario_dt.date() > fecha_base.date():
+        minutos += 24 * 60  # sumar 24h si el vuelo es del día siguiente
+    return minutos
 
 def normalizar(texto):
     if not isinstance(texto, str):
@@ -60,7 +67,12 @@ df_trabajadores_con_avion = pd.read_sql(f'''
     JOIN "Trabajador" T ON TT."trabajadorId" = T.id
     WHERE TT."turnoId" = '{turno_id}';
 ''', engine)
-print(f"Trabajadores con avión: {df_trabajadores_con_avion}")
+
+if len(df_trabajadores_con_avion)>0:
+    print(f"\nTrabajadores con asignación manual: {df_trabajadores_con_avion}")
+else:
+    print(f"\nTrabajadores con asignación manual: 0")
+
 df_buses = pd.read_sql(f'''
     SELECT *
     FROM "BusTurno"
@@ -114,6 +126,31 @@ df_commercial_planes = pd.read_sql(f'''
     ORDER BY "departureTime" ASC;
 ''', engine)
 
+#Parametros modificables
+cursor.execute(
+    '''
+    SELECT  t."fecha",
+            p."min_hora",
+            p."max_hora",
+            p."espera_conexion_subida",
+            p."espera_conexion_bajada",
+            p."max_tiempo_ejecucion",
+            p."tiempo_adicional_parada"
+    FROM    "Turno"                AS t
+    JOIN    "ParametrosModeloTurno" AS p
+           ON p."turnoId" = t."id"
+    WHERE   t."id" = %s
+    ''',
+    (turno_id,)
+)
+
+row = cursor.fetchone()
+if not row:
+    print(f"No se encontró el turno con ID {turno_id}")
+    exit()
+
+fecha_turno, min_hora, max_hora, espera_conexion_subida, espera_conexion_bajada, max_tiempo_ejecucion, tiempo_adicional_parada = row
+tiempo_trayecto_bus = 60 # revisar
 
 # -------------------------
 # Preprocesamiento
@@ -133,7 +170,7 @@ iata_map = {"SCL": "SANTIAGO","ANF": "ANTOFAGASTA","CJC": "CALAMA"}
 # Reemplazar en columnas origin y destination
 df_commercial_planes["origin"] = df_commercial_planes["origin"].replace(iata_map)
 df_commercial_planes["destination"] = df_commercial_planes["destination"].replace(iata_map)
-
+#buses
 df_buses["comunas_origen"] = df_buses["comunas_origen"].apply(lambda x: [normalizar(c) for c in json.loads(x)])
 df_buses["comunas_destino"] = df_buses["comunas_destino"].apply(lambda x: [normalizar(c) for c in json.loads(x)])
 
@@ -156,10 +193,9 @@ CV = {
     plane_id: CVtotal.get(plane_id, 0) - usadas_dict.get(plane_id, 0)
     for plane_id in CVtotal
 }
-print(CV)
 
 # --------------------------------------
-#Comercial Planes
+# Trabajadores sin vuelo charter
 # --------------------------------------
 
 # Agrupo la capacidad disponible por (origen, destino)
@@ -170,6 +206,8 @@ df_plane_capacity = (
     .sum()
     .reset_index(name='capacidad_total')
 )
+
+print("Capacidad Vuelos charter origen-destino")
 print(df_plane_capacity)
 
 # Para cada grupo origen–destino, elijo:
@@ -182,12 +220,7 @@ for _, row in df_plane_capacity.iterrows():
     o = row['ciudad_origen']
     d = row['ciudad_destino']
     cap = int(row['capacidad_total'])
-    
-    # Demanda de ese grupo
-    grupo = df_demand[
-        (df_demand['origen'] == o) &
-        (df_demand['destino'] == d)
-    ]
+    grupo = df_demand[(df_demand['origen'] == o) &(df_demand['destino'] == d)]
     
     # Si la demanda cabe, asigno todos
     if len(grupo) <= cap:
@@ -212,15 +245,94 @@ assigned_ids = [
     for trab_id in ids
 ]
 
-# 3) DataFrame de quienes NO tienen transporte (ni avión ni bus)
+# 2) DataFrame de quienes NO tienen transporte (ni avión ni bus)
 df_trabajadores_vuelos_comerciales = df_trabajadores[
     ~df_trabajadores["trabajador_id"].isin(assigned_ids)
 ]
 
-# Quitar los que viajaran en vuelos comerciales de df_trabajadores
+# 3) Quitar los que viajaran en vuelos comerciales de df_trabajadores
 not_assigned_ids = set(df_trabajadores_vuelos_comerciales["trabajador_id"])
 df_trabajadores = df_trabajadores[
     ~df_trabajadores["trabajador_id"].isin(not_assigned_ids)
+].reset_index(drop=True)
+
+#Validación de hora
+print("\nCantidad de vuelos comerciales (sin filtrar):", len(df_commercial_planes))
+def vuelo_valido(row):
+    id = row["id"]
+    destino = row["destination"]
+    origen = row["origin"]
+    hora_salida = datetime_to_minutos(row["departureTime"], fecha_turno)
+    hora_llegada = datetime_to_minutos(row["arrivalTime"], fecha_turno)
+
+    es_santiago = destino == "SANTIAGO" or origen == "SANTIAGO"
+
+    if es_santiago:
+        if hora_salida < min_hora or hora_salida > max_hora:
+            return False
+        if hora_llegada < min_hora or hora_llegada > max_hora:
+            return False
+    return True
+
+# Filtrar DataFrame
+df_commercial_planes = df_commercial_planes[df_commercial_planes.apply(vuelo_valido, axis=1)].reset_index(drop=True)
+print("Cantidad de vuelos comerciales (filtrados):", len(df_commercial_planes))
+vuelos_comerciales = df_commercial_planes["id"].tolist()
+C_CP = df_commercial_planes.set_index("id")["seatsAvailable"].to_dict() #capacidad
+# --------------------------------------
+# Trabajadores sin vuelo
+# --------------------------------------
+df_commercial_plane_capacity = (
+    df_commercial_planes
+    .assign(capacidad_restante=lambda df: df['id'].map(C_CP))
+    .groupby(['origin', 'destination'])['capacidad_restante']
+    .sum()
+    .reset_index(name='capacidad_total')
+)
+print("\nCapacidad vuelos comerciales origen-destino")
+print(df_commercial_plane_capacity)
+
+df_demand_com = df_trabajadores_vuelos_comerciales[df_trabajadores_vuelos_comerciales['use_plane'] == 1]
+comerciales_asignados_por_origen_dest = {}
+
+for _, row in df_commercial_plane_capacity.iterrows():
+    o = row['origin']
+    d = row['destination']
+    cap = int(row['capacidad_total'])
+    grupo = df_demand_com[(df_demand_com['origen'] == o) &(df_demand_com['destino'] == d)]
+    
+    # Si la demanda cabe, asigno todos
+    if len(grupo) <= cap:
+        asign_ids_com = grupo['trabajador_id'].tolist()
+    else:
+        # 3.1) Primero RM (región 13)
+        rm = grupo[grupo['region'] == 13]['trabajador_id'].tolist()
+        asign_ids_com = rm[:cap]
+        
+        # 3.2) Si aún quedan cupos, agrego otros hasta llenar
+        faltantes = cap - len(asign_ids_com)
+        if faltantes > 0:
+            otros = grupo[~grupo['trabajador_id'].isin(asign_ids_com)]
+            asign_ids_com += otros['trabajador_id'].tolist()[:faltantes]
+    
+    comerciales_asignados_por_origen_dest[(o, d)] = asign_ids_com
+
+# 1) Obtener el listado de todos los IDs asignados a vuelos comerciales
+comerciales_assigned_ids = [
+    trab_id 
+    for ids in comerciales_asignados_por_origen_dest.values() 
+    for trab_id in ids
+]
+
+# 2) DataFrame de quienes NO tienen transporte (ni chartes ni cpmerciañ)
+df_trabajadores_no_asignados = df_trabajadores_vuelos_comerciales[
+    ~df_trabajadores_vuelos_comerciales["trabajador_id"].isin(comerciales_assigned_ids)
+]
+
+# 3) Quitar los que viajaran en vuelos comerciales de df_trabajadores
+not_assigned_ids_2 = set(df_trabajadores_no_asignados["trabajador_id"])
+df_trabajadores_vuelos_comerciales = df_trabajadores_vuelos_comerciales[
+    ~df_trabajadores_vuelos_comerciales["trabajador_id"].isin(not_assigned_ids_2)
 ].reset_index(drop=True)
 
 # -------------------------
@@ -251,40 +363,6 @@ region_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("
 use_plane_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("trabajador_id")["use_plane"].to_dict()
 use_bus_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("trabajador_id")["use_bus"].to_dict()
 
-#Parametros modificables
-cursor.execute(
-    '''
-    SELECT  t."fecha",
-            p."min_hora",
-            p."max_hora",
-            p."espera_conexion_subida",
-            p."espera_conexion_bajada",
-            p."max_tiempo_ejecucion",
-            p."tiempo_adicional_parada"
-    FROM    "Turno"                AS t
-    JOIN    "ParametrosModeloTurno" AS p
-           ON p."turnoId" = t."id"
-    WHERE   t."id" = %s
-    ''',
-    (turno_id,)
-)
-print("Revisión status: OK")
-
-row = cursor.fetchone()
-if not row:
-    print(f"No se encontró el turno con ID {turno_id}")
-    exit()
-
-fecha_turno, min_hora, max_hora, espera_conexion_subida, espera_conexion_bajada, max_tiempo_ejecucion, tiempo_adicional_parada = row
-
-tiempo_trayecto_bus = 60 # revisar
-
-def datetime_to_minutos(horario_dt: datetime, fecha_base: datetime):
-    minutos = horario_dt.hour * 60 + horario_dt.minute
-    if horario_dt.date() > fecha_base.date():
-        minutos += 24 * 60  # sumar 24h si el vuelo es del día siguiente
-    return minutos
-
 
 #planeturnos
 HV = {
@@ -299,30 +377,9 @@ HV_bajada = {
 
 #commercialplanes
 
-#Validación de hora
-print("Cantidad de vuelos comerciales:", len(df_commercial_planes))
-def vuelo_valido(row):
-    id = row["id"]
-    destino = row["destination"]
-    origen = row["origin"]
-    hora_salida = datetime_to_minutos(row["departureTime"], fecha_turno)
-    hora_llegada = datetime_to_minutos(row["arrivalTime"], fecha_turno)
 
-    es_santiago = destino == "SANTIAGO" or origen == "SANTIAGO"
 
-    if es_santiago:
-        if hora_salida < min_hora or hora_salida > max_hora:
-            return False
-        if hora_llegada < min_hora or hora_llegada > max_hora:
-            return False
-    return True
 
-# Filtrar DataFrame
-df_commercial_planes = df_commercial_planes[df_commercial_planes.apply(vuelo_valido, axis=1)].reset_index(drop=True)
-print("Cantidad de vuelos comerciales:", len(df_commercial_planes))
-vuelos_comerciales = df_commercial_planes["id"].tolist()
-
-C_CP = df_commercial_planes.set_index("id")["seatsAvailable"].to_dict() #capacidad
 H_CP = {
     row["id"]: datetime_to_minutos(row["departureTime"], fecha_turno)
     for _, row in df_commercial_planes.iterrows()
@@ -344,6 +401,7 @@ destino_planes = df_planes.set_index("plane_turno_id")["ciudad_destino"].str.upp
 origen_commercial_planes = df_commercial_planes.set_index("id")["origin"].str.upper().to_dict()
 destino_commercial_planes = df_commercial_planes.set_index("id")["destination"].str.upper().to_dict()
 
+print("\nDestino vuelos comerciales:")
 print(destino_commercial_planes)
 
 # -------------------------
@@ -556,15 +614,18 @@ print(f"📦 Variables HB_var creadas: {len(HB_var)}")
 print(f"📦 Variables comb creadas: {len(comb_vars)}")
 print(f"📦 Variables espera creadas: {len(espera_total)}")
 
-print("🔍 Total trabajadores:", len(trabajadores)+len(trabajadores_comerciales))
-print("  - Total trabajadores (vuelos charter):", len(trabajadores))
-print("  - Total trabajadores (vuelos comerciales):", len(trabajadores_comerciales))
+print("🔍 Total trabajadores:", len(trabajadores)+len(trabajadores_comerciales)+len(df_trabajadores_no_asignados))
+print("   - Total trabajadores (vuelos charter):", len(trabajadores))
+print("   - Total trabajadores (vuelos comerciales):", len(trabajadores_comerciales))
+print("   - Total trabajadores (sin vuelos):", len(df_trabajadores_no_asignados))
 print("🔍 Total buses:", len(buses))
 print("🔍 Total vuelos:", len(vuelos)+len(vuelos_comerciales))
-print("  - Total vuelos charter:", len(vuelos))
-print("  - Total vuelos comerciales:", len(vuelos_comerciales))
+print("   - Total vuelos charter:", len(vuelos))
+print("   - Total vuelos comerciales:", len(vuelos_comerciales))
 print("🔍 Capacidad total buses:", sum(CB.values()))
-print("🔍 Capacidad total vuelos:", sum(CVtotal.values()))
+print("🔍 Capacidad total vuelos:", sum(CVtotal.values())+sum(C_CP.values()))
+print("   - Capacidad vuelos charter:", sum(CVtotal.values()))
+print("   - Capacidad vuelos comerciales:", sum(C_CP.values()))
 
 # -------------------------
 # Resolver
@@ -679,3 +740,4 @@ print(f"✈️🚌 Asignaciones insertadas exitosamente para el turno {turno_id}
 mem_final = process.memory_info().rss / (1024 * 1024)
 print(f"✅ Memoria final usada por el proceso: {mem_final:.2f} MB")
 print(f"📈 Diferencia de memoria: {mem_final - mem_inicial:.2f} MB")
+print("----------------------------------------------------------------------------------")

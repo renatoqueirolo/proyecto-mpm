@@ -149,7 +149,7 @@ model CommercialPlane {
   seatsAvailable   Int
   createdAt        DateTime  @default(now())
   turnoId          String
-  turno            Turno      @relation(fields: [turnoId], references: [id])
+  turno            Turno      @relation(fields: [turnoId], references: [id], onDelete: Cascade)
 
   assignmentCommercialPlanes AssignmentCommercialPlane[]
 
