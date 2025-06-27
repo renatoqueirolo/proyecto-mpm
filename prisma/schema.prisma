@@ -31,6 +31,12 @@ enum RolUsuario {
   VISUALIZADOR
 }
 
+enum EstadoAsignacion {
+  COMPRADO
+  PENDIENTE
+  AGOTADO
+}
+
 model Trabajador {
   id                String             @id @default(cuid())
   rut               String             @unique
@@ -194,6 +200,7 @@ model AssignmentCommercialPlane {
   id                  String            @id @default(cuid())
   trabajadorTurnoId   String
   commercialPlaneId   Int
+  estado              EstadoAsignacion  @default(PENDIENTE)
 
   trabajadorTurno     TrabajadorTurno   @relation(fields: [trabajadorTurnoId], references: [id], onDelete: Cascade)
   commercialPlane     CommercialPlane   @relation(fields: [commercialPlaneId], references: [id], onDelete: Cascade)
