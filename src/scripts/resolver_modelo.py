@@ -12,6 +12,8 @@ from sqlalchemy import create_engine
 import unicodedata
 import time
 import psutil
+from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
 
 process = psutil.Process(os.getpid())
 mem_inicial = process.memory_info().rss / (1024 * 1024)  # en MB
@@ -24,6 +26,16 @@ def datetime_to_minutos(horario_dt: datetime, fecha_base: datetime):
     minutos = horario_dt.hour * 60 + horario_dt.minute
     if horario_dt.date() > fecha_base.date():
         minutos += 24 * 60  # sumar 24h si el vuelo es del día siguiente
+    return minutos
+
+def datetime_to_minutos_utc(horario_dt: datetime, fecha_base: datetime) -> int:
+    # Convertir ambos a hora local (Chile)
+    if horario_dt.tzinfo is None:
+        horario_dt = horario_dt.replace(tzinfo=timezone.utc)
+    horario_local = horario_dt.astimezone(ZoneInfo("America/Santiago"))
+    minutos = horario_local.hour * 60 + horario_local.minute
+    if horario_local.date() > fecha_base.date():
+        minutos += 24 * 60  # sumar 24h si es del día siguiente
     return minutos
 
 def normalizar(texto):
@@ -376,17 +388,13 @@ HV_bajada = {
 }
 
 #commercialplanes
-
-
-
-
 H_CP = {
-    row["id"]: datetime_to_minutos(row["departureTime"], fecha_turno)
+    row["id"]: datetime_to_minutos_utc(row["departureTime"], fecha_turno)
     for _, row in df_commercial_planes.iterrows()
 }
 
 H_CP_bajada = {
-    row["id"]: datetime_to_minutos(row["arrivalTime"], fecha_turno)
+    row["id"]: datetime_to_minutos_utc(row["arrivalTime"], fecha_turno)
     for _, row in df_commercial_planes.iterrows()
 }
 
