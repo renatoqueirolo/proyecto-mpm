@@ -215,6 +215,81 @@ const importarDesdeExcel = async (req, res) => {
   }
 };
 
+// Read all Regions
+const getRegions = async (req, res) => {
+  try {
+    const regions = await prisma.region.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+    res.status(200).json(regions);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Create Region
+const createRegion = async (req, res) => {
+  try {
+    const { name, comunas_origen_subida, comunas_origen_bajada, tiempo_promedio_bus } = req.body;
+    
+    if (!name || !comunas_origen_subida || !comunas_origen_bajada || tiempo_promedio_bus === undefined) {
+      return res.status(400).json({ error: "Todos los campos son obligatorios." });
+    }
+
+    const newRegion = await prisma.region.create({
+      data: {
+        name,
+        comunas_origen_subida,
+        comunas_origen_bajada,
+        tiempo_promedio_bus: parseFloat(tiempo_promedio_bus),
+      },
+    });
+    res.status(201).json(newRegion);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Update Region
+const updateRegion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, comunas_origen_subida, comunas_origen_bajada, tiempo_promedio_bus } = req.body;
+    
+    if (!name || !comunas_origen_subida || !comunas_origen_bajada || tiempo_promedio_bus === undefined) {
+      return res.status(400).json({ error: "Todos los campos son obligatorios." });
+    }
+
+    const updatedRegion = await prisma.region.update({
+      where: { id: id },
+      data: {
+        name,
+        comunas_origen_subida,
+        comunas_origen_bajada,
+        tiempo_promedio_bus: parseFloat(tiempo_promedio_bus),
+      },
+    });
+    res.status(200).json(updatedRegion);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Delete Region
+const deleteRegion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.region.delete({
+      where: { id: id },
+    });
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   getUsers,
   createUser,
@@ -226,4 +301,8 @@ module.exports = {
   deletePlane,
   updatePlane,
   importarDesdeExcel,
+  getRegions,
+  createRegion,
+  updateRegion,
+  deleteRegion,
 };

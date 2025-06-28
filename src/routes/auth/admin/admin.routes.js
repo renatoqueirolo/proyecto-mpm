@@ -9,7 +9,11 @@ const {
   createPlane,
   deletePlane,
   updatePlane,
-  importarDesdeExcel
+  importarDesdeExcel,
+  getRegions,
+  createRegion,
+  updateRegion,
+  deleteRegion,
 } = require('../../../controllers/auth/admin/admin.controller');
 const { crearTurno } = require('../../../controllers/turno/turno.controller');
 const {
@@ -177,6 +181,70 @@ router.delete('/planes/:id', deletePlane);
  *         description: Error al importar los aviones
  */
 router.post('/planes/import', importarDesdeExcel);
+
+/**
+ * @swagger
+ * /admin/regions:
+ *   get:
+ *     summary: Obtiene todas las regiones de la aplicación
+ *     tags:
+ *      - Gestión de Regiones
+ *     responses:
+ *       200:
+ *         description: Respuesta exitosa
+ *       500:
+ *         description: Error al obtener las regiones
+ */
+router.get('/regions', getRegions);
+
+/**
+ * @swagger
+ * /admin/regions:
+ *   post:
+ *     summary: Crea una nueva región
+ *     tags:
+ *      - Gestión de Regiones
+ *     responses:
+ *       201:
+ *         description: Región creada exitosamente
+ *       400:
+ *         description: Datos inválidos
+ *       500:
+ *         description: Error al crear la región
+ */
+router.post('/regions', createRegion);
+
+/**
+ * @swagger
+ * /admin/regions/:id:
+ *   put:
+ *     summary: Actualiza una región existente
+ *     tags:
+ *      - Gestión de Regiones
+ *     responses:
+ *       200:
+ *         description: Región actualizada exitosamente
+ *       400:
+ *         description: Datos inválidos
+ *       500:
+ *         description: Error al actualizar la región
+ */
+router.put('/regions/:id', updateRegion);
+
+/**
+ * @swagger
+ * /admin/regions/:id:
+ *   delete:
+ *     summary: Elimina una región existente
+ *     tags:
+ *      - Gestión de Regiones
+ *     responses:
+ *       204:
+ *         description: Región eliminada exitosamente
+ *       500:
+ *         description: Error al eliminar la región
+ */
+router.delete('/regions/:id', deleteRegion);
 
 router.post('/turnos', userMustBeLogged, userCannotBeVisualizador, crearTurno);
 
