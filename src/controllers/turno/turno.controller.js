@@ -32,7 +32,6 @@ async function crearTurno(req, res) {
 
     const capacidades_por_region = {
       V: [12, 20, 10],
-      IV: [16, 8],
       RM: [20, 30],
     };
 
