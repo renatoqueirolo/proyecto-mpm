@@ -240,8 +240,8 @@ model HistorialAsignacion {
 model Region {
   id                      String   @id @default(cuid())
   name                    String   @unique
-  comunas_origen_subida   String[] // List of communes for pickup
-  comunas_origen_bajada   String[] // List of communes for dropoff
+  comunas_acercamiento_subida   String[] // List of communes for pickup
+  comunas_acercamiento_bajada   String[] // List of communes for dropoff
   tiempo_promedio_bus     Float
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt

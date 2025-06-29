@@ -232,17 +232,17 @@ const getRegions = async (req, res) => {
 // Create Region
 const createRegion = async (req, res) => {
   try {
-    const { name, comunas_origen_subida, comunas_origen_bajada, tiempo_promedio_bus } = req.body;
+    const { name, comunas_acercamiento_subida, comunas_acercamiento_bajada, tiempo_promedio_bus } = req.body;
     
-    if (!name || !comunas_origen_subida || !comunas_origen_bajada || tiempo_promedio_bus === undefined) {
+    if (!name || !comunas_acercamiento_subida || !comunas_acercamiento_bajada || tiempo_promedio_bus === undefined) {
       return res.status(400).json({ error: "Todos los campos son obligatorios." });
     }
 
     const newRegion = await prisma.region.create({
       data: {
         name,
-        comunas_origen_subida,
-        comunas_origen_bajada,
+        comunas_acercamiento_subida,
+        comunas_acercamiento_bajada,
         tiempo_promedio_bus: parseFloat(tiempo_promedio_bus),
       },
     });
@@ -256,9 +256,9 @@ const createRegion = async (req, res) => {
 const updateRegion = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, comunas_origen_subida, comunas_origen_bajada, tiempo_promedio_bus } = req.body;
+    const { name, comunas_acercamiento_subida, comunas_acercamiento_bajada, tiempo_promedio_bus } = req.body;
     
-    if (!name || !comunas_origen_subida || !comunas_origen_bajada || tiempo_promedio_bus === undefined) {
+    if (!name || !comunas_acercamiento_subida || !comunas_acercamiento_bajada || tiempo_promedio_bus === undefined) {
       return res.status(400).json({ error: "Todos los campos son obligatorios." });
     }
 
@@ -266,8 +266,8 @@ const updateRegion = async (req, res) => {
       where: { id: id },
       data: {
         name,
-        comunas_origen_subida,
-        comunas_origen_bajada,
+        comunas_acercamiento_subida,
+        comunas_acercamiento_bajada,
         tiempo_promedio_bus: parseFloat(tiempo_promedio_bus),
       },
     });

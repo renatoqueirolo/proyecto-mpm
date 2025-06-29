@@ -1056,7 +1056,45 @@ async function importarTrabajadoresAlTurno(req, res) {
         });
       }
 
-      // 3. Crear el TrabajadorTurno
+      // 3. Crear o actualizar la Región
+      const regionExistente = await prisma.region.findUnique({
+        where: { name: t.region }
+      });
+
+      if (!regionExistente) {
+        await prisma.region.create({
+          data: {
+            name: t.region,
+            comunas_acercamiento_subida: t.subida ? [t.acercamiento] : [],
+            comunas_acercamiento_bajada: !t.subida ? [t.acercamiento] : [],
+            tiempo_promedio_bus: 60, // valor por defecto, ajustable si quieres
+          }
+        });
+      } else {
+        // Verificar y actualizar listas según tipo (subida o bajada)
+        if (t.subida && !regionExistente.comunas_acercamiento_subida.includes(t.acercamiento)) {
+          await prisma.region.update({
+            where: { name: t.region },
+            data: {
+              comunas_acercamiento_subida: {
+                push: t.acercamiento,
+              }
+            }
+          });
+        }
+        if (!t.subida && !regionExistente.comunas_acercamiento_bajada.includes(t.acercamiento)) {
+          await prisma.region.update({
+            where: { name: t.region },
+            data: {
+              comunas_acercamiento_bajada: {
+                push: t.acercamiento,
+              }
+            }
+          });
+        }
+      }
+
+      // 4. Crear el TrabajadorTurno
       await prisma.trabajadorTurno.create({
         data: {
           turnoId: id,
@@ -1076,6 +1114,7 @@ async function importarTrabajadoresAlTurno(req, res) {
     res.status(500).json({ error: 'Error al importar trabajadores' });
   }
 }
+
 
 async function agregarTrabajadorATurno(req, res) {
   try {
