@@ -22,8 +22,8 @@ DB_URL = os.getenv("DATABASE_URL")
 conn = psycopg2.connect(DB_URL)
 cursor = conn.cursor()
 engine = create_engine(DB_URL)
-
-print("Cargando datos desde la base de datos...")
+print("----------------------------------------------------------------------------------")
+print("Creando buses:")
 
 df_tt = pd.read_sql(f'''
     SELECT TT.*, T."nombreCompleto"
@@ -173,6 +173,7 @@ for bus in todos_los_buses:
     bus_id = bus["id"]
     capacidad = bus["capacidad"]
     subida = bus["subida"]
+    region = bus["region"]
     comunas_origen = bus["comunas"] if subida else ["SANTIAGO"]
     comunas_destino = ["SANTIAGO"] if subida else bus["comunas"]
 
@@ -185,17 +186,18 @@ for bus in todos_los_buses:
         cursor.execute('''
             INSERT INTO "BusTurno" (
                 id, "turnoId", "capacidad", "horario_salida", "horario_llegada", 
-                "comunas_origen", "comunas_destino"
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                "region","comunas_origen", "comunas_destino"
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ''', (
             bus_id,
             turno_id,
             capacidad,
             hora_salida,
             hora_llegada,
+            region,
             json.dumps(comunas_origen),
             json.dumps(comunas_destino)
         ))
 
 conn.commit()
-print(f"Buses creados exitosamente para el turno {turno_id}.")
+print("----------------------------------------------------------------------------------")

@@ -156,13 +156,18 @@ cursor.execute(
     (turno_id,)
 )
 
+df_regiones = pd.read_sql('SELECT * FROM "Region"', engine)
+region_por_id = df_buses.set_index("id")["region"].to_dict()
+duracion_por_region = dict(zip(df_regiones["name"], df_regiones["tiempo_promedio_bus"]))
+
+
 row = cursor.fetchone()
 if not row:
     print(f"No se encontró el turno con ID {turno_id}")
     exit()
 
 fecha_turno, min_hora, max_hora, espera_conexion_subida, espera_conexion_bajada, max_tiempo_ejecucion, tiempo_adicional_parada = row
-tiempo_trayecto_bus = 60 # revisar
+
 
 # -------------------------
 # Preprocesamiento
@@ -716,7 +721,8 @@ for t in trabajadores_comerciales:
 # -------------------------
 
 for b in buses:
-    duracion = tiempo_trayecto_bus
+    region = region_por_id.get(b)
+    duracion = duracion_por_region.get(region, 60)
     if len(comunas_origen_bus[b]) > 1:
         duracion += tiempo_adicional_parada*(len(comunas_origen_bus[b])-1)
     

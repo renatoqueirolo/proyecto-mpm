@@ -108,6 +108,7 @@ model BusTurno {
   capacidad       Int
   horario_salida  DateTime
   horario_llegada DateTime
+  region String
   comunas_origen String      
   comunas_destino String     
 
