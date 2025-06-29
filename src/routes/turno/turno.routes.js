@@ -42,7 +42,8 @@ const {
   editarPlaneTurno,
   eliminarPlaneTurno,
   crearPlaneTurno,
-  obtenerPlaneTurno
+  obtenerPlaneTurno,
+  obtenerRegionesDeTurno
 } = require('../../controllers/turno/turno.controller');
 
 router.use(userMustBeLogged)
@@ -314,6 +315,31 @@ router.post('/:id/capacidad', agregarCapacidadTurno);
 router.get('/:id/capacidad', obtenerCapacidadTurno);
 
 router.put('/:id/capacidad', editarCapacidadTurno);
+
+/**
+ * @swagger
+ * /turnos/{id}/regiones:
+ *   get:
+ *     summary: Obtener las regiones de un turno
+ *     tags: [Turnos]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Lista de regiones
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: string
+ */
+
+router.get('/:id/regiones', obtenerRegionesDeTurno);
 
 
 /**

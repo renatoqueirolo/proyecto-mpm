@@ -263,6 +263,33 @@ async function obtenerCapacidadTurno(req, res) {
   }
 }
 
+async function obtenerRegionesDeTurno(req, res) {
+  try {
+    const { id } = req.params;
+    // Traemos todas las regiones de los trabajadores del turno
+    const trabajadores = await prisma.trabajadorTurno.findMany({
+      where: { turnoId: id },
+      select: { region: true },
+    });
+
+    // Extraemos las regiones únicas
+    const regionesUnicas = [
+      ...new Set(
+        trabajadores
+          .map(t => t.region)
+          .filter(r => !!r) // Quitamos nulos o vacíos
+      )
+    ];
+
+    res.json(regionesUnicas);
+  } catch (error) {
+    console.error("Error al obtener regiones del turno:", error);
+    res.status(500).json({ error: "Error al obtener regiones del turno" });
+  }
+}
+
+
+
 async function agregarCapacidadTurno(req, res) {
   try {
     const { id } = req.params;
@@ -1388,6 +1415,9 @@ function calcularKPIs(turno, assignmentBuses, assignmentPlanes, busMap, planeMap
 
 async function exportarAsignacionesExcel(req, res) {
   const { id } = req.params;
+  const { region } = req.query;
+  
+  console.log(`Iniciando exportación para turno ${id}, Región: ${region || 'Todas'}`);
   let nombreArchivo;
 
   const getHora = (date) => new Date(date).toISOString().substring(11, 16);
@@ -1395,30 +1425,38 @@ async function exportarAsignacionesExcel(req, res) {
   try {
     /* === 1. Carga de datos ============================================ */
     const turno = await prisma.turno.findUnique({
-      where: { id },
-      include: {
-        trabajadoresTurno: { include: { trabajador: true } },
-        planeTurno: { include: { plane: true } },
-        busTurno:  true,
-      },
-    });
+     where: { id },
+     include: {
+       trabajadoresTurno: {
+         where: {
+           region: region ? region : undefined,
+         },
+         include: { trabajador: true }
+       },
+       planeTurno: { include: { plane: true } },
+       busTurno:  true,
+     },
+   });
 
     // Sanitize turno name for filename
     const safeTurnoName = turno.nombre ? turno.nombre.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
     const dateObj = new Date(turno.fecha);
     const safeDate = !isNaN(dateObj) ? dateObj.toISOString().slice(0,10) : "fecha";
-    nombreArchivo = `asignaciones_${safeTurnoName}_${safeDate}_excel`;
+    const safeRegion = region ? `_region_${region}` : ''; 
+    nombreArchivo = `asignaciones_${safeTurnoName}${safeRegion}_${safeDate}_excel`;
 
     const [assignmentBuses, assignmentPlanes] = await Promise.all([
-      prisma.assignmentBus.findMany({
-        where: { busTurno: { turnoId: id } },
-        include: { busTurno: true },
-      }),
-      prisma.assignmentPlane.findMany({
-        where: { planeTurno: { turnoId: id } },
-        include: { planeTurno: { include: { plane: true } } },
-      }),
-    ]);
+    prisma.assignmentBus.findMany({
+      where: { busTurno: { turnoId: id } }, // <-- CORREGIDO
+      include: { busTurno: true },
+    }),
+    prisma.assignmentPlane.findMany({
+      where: { planeTurno: { turnoId: id } }, // <-- CORREGIDO
+      include: { planeTurno: { include: { plane: true } } },
+    }),
+  ]);
+
+
 
     /* === 2. Mapas rápidos ============================================= */
     const busMap   = Object.fromEntries(assignmentBuses .map(a => [a.trabajadorTurnoId, a.busTurno]));
@@ -1962,5 +2000,6 @@ module.exports = {
   editarPlaneTurno,
   eliminarPlaneTurno,
   crearPlaneTurno,
-  obtenerPlaneTurno
+  obtenerPlaneTurno, 
+  obtenerRegionesDeTurno
 };
