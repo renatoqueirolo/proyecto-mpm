@@ -292,22 +292,58 @@ def vuelo_valido(row):
 # Filtrar DataFrame
 df_commercial_planes = df_commercial_planes[df_commercial_planes.apply(vuelo_valido, axis=1)].reset_index(drop=True)
 print("Cantidad de vuelos comerciales (filtrados):", len(df_commercial_planes))
-vuelos_comerciales = df_commercial_planes["id"].tolist()
-C_CP = df_commercial_planes.set_index("id")["seatsAvailable"].to_dict() #capacidad
-Precio_CP = df_commercial_planes.set_index("id")["priceClp"].to_dict() #precio
 
-# --------------------------------------
-# Trabajadores sin vuelo
-# --------------------------------------
+prev_C_CP = df_commercial_planes.set_index("id")["seatsAvailable"].to_dict() #capacidad
+prev_Precio_CP = df_commercial_planes.set_index("id")["priceClp"].to_dict() #precio
+
 df_commercial_plane_capacity = (
     df_commercial_planes
-    .assign(capacidad_restante=lambda df: df['id'].map(C_CP))
+    .assign(capacidad_restante=lambda df: df['id'].map(prev_C_CP))
     .groupby(['origin', 'destination'])['capacidad_restante']
     .sum()
     .reset_index(name='capacidad_total')
 )
 print("\nCapacidad vuelos comerciales origen-destino")
 print(df_commercial_plane_capacity)
+
+for _, row in df_commercial_plane_capacity.iterrows():
+    o, d, capacidad_total = row["origin"], row["destination"], int(row["capacidad_total"])
+    demanda = len(df_trabajadores_vuelos_comerciales[
+        (df_trabajadores_vuelos_comerciales["origen"] == o) &
+        (df_trabajadores_vuelos_comerciales["destino"] == d) &
+        (df_trabajadores_vuelos_comerciales["use_plane"] == 1)
+    ])
+
+    if capacidad_total > demanda:
+        vuelos_trayecto = df_commercial_planes[
+            (df_commercial_planes["origin"] == o) &
+            (df_commercial_planes["destination"] == d)
+        ].copy()
+
+        vuelos_trayecto = vuelos_trayecto.sort_values(by="priceClp")
+        vuelos_seleccionados = []
+        acumulado = 0
+
+        for _, vuelo in vuelos_trayecto.iterrows():
+            if acumulado >= demanda:
+                break
+            vuelos_seleccionados.append(vuelo["id"])
+            acumulado += prev_C_CP[vuelo["id"]]
+
+        df_commercial_planes = df_commercial_planes[
+            ~((df_commercial_planes["origin"] == o) &
+              (df_commercial_planes["destination"] == d) &
+              (~df_commercial_planes["id"].isin(vuelos_seleccionados)))
+        ]
+
+vuelos_comerciales = df_commercial_planes["id"].tolist()
+
+C_CP = df_commercial_planes.set_index("id")["seatsAvailable"].to_dict() #capacidad
+Precio_CP = df_commercial_planes.set_index("id")["priceClp"].to_dict() #precio
+# --------------------------------------
+# Trabajadores sin vuelo
+# --------------------------------------
+
 
 df_demand_com = df_trabajadores_vuelos_comerciales[df_trabajadores_vuelos_comerciales['use_plane'] == 1]
 comerciales_asignados_por_origen_dest = {}
@@ -646,8 +682,9 @@ print(f"⏱ Tiempo total Ejecución: {elapsed_time:.2f} segundos")
 if status in [cp_model.FEASIBLE, cp_model.OPTIMAL]:
     print("✅ Solución encontrada. Valor objetivo:", solver.ObjectiveValue())
     trabajadores_no_rm = [t for t in trabajadores if region_trabajadores[t] != 13]
-    if trabajadores_no_rm:
-        espera_promedio = round(solver.ObjectiveValue() / len(trabajadores_no_rm))
+    trabajadores_com_no_rm = [t for t in trabajadores_comerciales if region_trabajadores_comerciales[t] != 13]
+    if trabajadores_no_rm or trabajadores_com_no_rm:
+        espera_promedio = round(solver.ObjectiveValue() / (len(trabajadores_no_rm)+len(trabajadores_com_no_rm)))
         print("Espera Promedio:", espera_promedio)
     else:
         espera_promedio = 0
