@@ -1579,7 +1579,23 @@ async function obtenerAsignacionesDeTurno(req, res) {
       }
     }));
 
-    res.json({ buses, vuelos, vuelos_comerciales });
+    const trabajadoresSinAsignacion = await prisma.trabajadorTurno.findMany({
+      where: {
+        turnoId: id,
+        NOT: {
+          OR: [
+            { id: { in: buses.map(b => b.trabajadorTurno.id) } },
+            { id: { in: vuelos.map(v => v.trabajadorTurno.id) } },
+            { id: { in: vuelos_comerciales.map(vc => vc.trabajadorTurno.id) } }
+          ]
+        }
+      },
+      include: {
+        trabajador: true
+      }
+    });
+
+    res.json({ buses, vuelos, vuelos_comerciales, trabajadoresSinAsignacion });
   } catch (error) {
     console.error("Error al obtener asignaciones:", error);
     res.status(500).json({ error: 'Error al obtener asignaciones' });
