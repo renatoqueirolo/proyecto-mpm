@@ -24,9 +24,12 @@ def obtener_build_id_latam(origen: str, destino: str, fecha: str):
         raise Exception(f"Error cargando página de LATAM: {response.status_code}")
 
     html = response.text
+    # Guardar el HTML en un archivo para depuración
+    with open("latam_page.html", "w", encoding="utf-8") as f:
+        f.write(html)
 
     # Buscar el build_id
-    match = re.search(r'_next/static/([a-zA-Z0-9]+)/_buildManifest.js', html)
+    match = re.search(r'_next/static/([^/]+)/_buildManifest.js', html)
     if match:
         build_id = match.group(1)
         return build_id

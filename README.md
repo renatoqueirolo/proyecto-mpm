@@ -131,6 +131,17 @@ npm run dev
 
 ---
 
+### (Opcional) Actualizar tablas
+
+
+```bash
+npx prisma migrate reset
+npx prisma migrate dev --name nombre-migrate
+npx prisma db seed
+```
+
+---
+
 ## 🛠️ Stack
 
 - Node.js

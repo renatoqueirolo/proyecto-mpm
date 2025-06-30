@@ -22,7 +22,7 @@ def get_latam_headers(origen: str, destino:str, fecha: str, adultos: int = 1):
         "x-latam-application-oc": "cl",
         "x-latam-client-name": "web-air-offers",
         "x-latam-request-id": str(uuid.uuid4()),
-        "x-latam-search-token": search_token, 
+        "x-latam-search-token": search_token,
         "x-latam-track-id": str(uuid.uuid4()),
         "Accept": "application/json, text/plain, */*",
         "Accept-Encoding": "gzip, deflate, br",

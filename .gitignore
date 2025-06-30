@@ -33,6 +33,7 @@ Thumbs.db
 coverage/
 
 venv/
+.venv/
 
 # Python
 __pycache__/
