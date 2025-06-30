@@ -160,7 +160,6 @@ df_regiones = pd.read_sql('SELECT * FROM "Region"', engine)
 region_por_id = df_buses.set_index("id")["region"].to_dict()
 duracion_por_region = dict(zip(df_regiones["name"], df_regiones["tiempo_promedio_bus"]))
 
-
 row = cursor.fetchone()
 if not row:
     print(f"No se encontró el turno con ID {turno_id}")
@@ -195,7 +194,6 @@ df_buses["comunas_destino"] = df_buses["comunas_destino"].apply(lambda x: [norma
 df_trabajadores["use_plane"] = df_trabajadores["region"].apply(lambda r: 0 if r in [1, 2, 3, 4, 15] else 1)
 # use_bus: 1 para todas excepto RM (13), que es 0
 df_trabajadores["use_bus"] = df_trabajadores["region"].apply(lambda r: 0 if r == 13 else 1)
-
 
 # -------------------------
 # Capacidad Disponible
@@ -262,7 +260,7 @@ assigned_ids = [
     for trab_id in ids
 ]
 
-# 2) DataFrame de quienes NO tienen transporte (ni avión ni bus)
+# 2) DataFrame de quienes NO tienen vuelo charter
 df_trabajadores_vuelos_comerciales = df_trabajadores[
     ~df_trabajadores["trabajador_id"].isin(assigned_ids)
 ]
@@ -273,7 +271,7 @@ df_trabajadores = df_trabajadores[
     ~df_trabajadores["trabajador_id"].isin(not_assigned_ids)
 ].reset_index(drop=True)
 
-#Validación de hora
+#Filtrar vuelos comerciales por hora
 print("\nCantidad de vuelos comerciales (sin filtrar):", len(df_commercial_planes))
 def vuelo_valido(row):
     id = row["id"]
@@ -296,6 +294,8 @@ df_commercial_planes = df_commercial_planes[df_commercial_planes.apply(vuelo_val
 print("Cantidad de vuelos comerciales (filtrados):", len(df_commercial_planes))
 vuelos_comerciales = df_commercial_planes["id"].tolist()
 C_CP = df_commercial_planes.set_index("id")["seatsAvailable"].to_dict() #capacidad
+Precio_CP = df_commercial_planes.set_index("id")["priceClp"].to_dict() #precio
+
 # --------------------------------------
 # Trabajadores sin vuelo
 # --------------------------------------
@@ -335,11 +335,9 @@ for _, row in df_commercial_plane_capacity.iterrows():
     comerciales_asignados_por_origen_dest[(o, d)] = asign_ids_com
 
 # 1) Obtener el listado de todos los IDs asignados a vuelos comerciales
-comerciales_assigned_ids = [
-    trab_id 
+comerciales_assigned_ids = [trab_id 
     for ids in comerciales_asignados_por_origen_dest.values() 
-    for trab_id in ids
-]
+    for trab_id in ids]
 
 # 2) DataFrame de quienes NO tienen transporte (ni chartes ni cpmerciañ)
 df_trabajadores_no_asignados = df_trabajadores_vuelos_comerciales[
@@ -380,28 +378,19 @@ region_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("
 use_plane_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("trabajador_id")["use_plane"].to_dict()
 use_bus_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("trabajador_id")["use_bus"].to_dict()
 
-
 #planeturnos
-HV = {
-    row["plane_turno_id"]: datetime_to_minutos(row["horario_salida"], fecha_turno)
-    for _, row in df_planes.iterrows()
-}
+HV = {row["plane_turno_id"]: datetime_to_minutos(row["horario_salida"], fecha_turno)
+    for _, row in df_planes.iterrows()}
 
-HV_bajada = {
-    row["plane_turno_id"]: datetime_to_minutos(row["horario_llegada"], fecha_turno)
-    for _, row in df_planes.iterrows()
-}
+HV_bajada = {row["plane_turno_id"]: datetime_to_minutos(row["horario_llegada"], fecha_turno)
+    for _, row in df_planes.iterrows()}
 
 #commercialplanes
-H_CP = {
-    row["id"]: datetime_to_minutos_utc(row["departureTime"], fecha_turno)
-    for _, row in df_commercial_planes.iterrows()
-}
+H_CP = {row["id"]: datetime_to_minutos_utc(row["departureTime"], fecha_turno)
+    for _, row in df_commercial_planes.iterrows()}
 
-H_CP_bajada = {
-    row["id"]: datetime_to_minutos_utc(row["arrivalTime"], fecha_turno)
-    for _, row in df_commercial_planes.iterrows()
-}
+H_CP_bajada = {row["id"]: datetime_to_minutos_utc(row["arrivalTime"], fecha_turno)
+    for _, row in df_commercial_planes.iterrows()}
 
 #buses
 comunas_origen_bus = df_buses.set_index("id")["comunas_origen"].apply(lambda x: x if isinstance(x, list) else json.loads(x)).to_dict()
@@ -708,6 +697,7 @@ for t in trabajadores:
                 VALUES (%s, %s, %s)
             ''', (str(uuid4()), t, v))
 
+kpi_precio_comerciales=0
 for t in trabajadores_comerciales:
     for v in vuelos_comerciales:
         if solver.Value(z[(t, v)]):
@@ -715,7 +705,9 @@ for t in trabajadores_comerciales:
                 INSERT INTO "AssignmentCommercialPlane" (id, "trabajadorTurnoId", "commercialPlaneId")
                 VALUES (%s, %s, %s)
             ''', (str(uuid4()), t, v))
+            kpi_precio_comerciales+=Precio_CP[v]
 
+print(f"Gastos Vuelos Comerciales: {kpi_precio_comerciales} CLP")
 # -------------------------
 # Actualizar horarios optimizados de buses
 # -------------------------
