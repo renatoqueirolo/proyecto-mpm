@@ -12,6 +12,7 @@ const app = express();
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
+app.use(express.urlencoded({ extended: false })); // 🔧 ¡Esto es lo que te faltaba!
 app.use(fileUpload());
 
 app.use('/', routes);

@@ -38,6 +38,13 @@ model Trabajador {
   historialAsignacion HistorialAsignacion[]
 }
 
+model Mensaje {
+  id                String             @id @default(cuid())
+  numero               String             
+  mensaje    String
+  esBot     Boolean  //
+}
+
 enum Project {
   ESCONDIDA
   SPENCE
