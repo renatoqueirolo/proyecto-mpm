@@ -126,14 +126,15 @@ model BusTurno {
 }
 
 model CapacidadTurno {
-  id              String   @id @default(cuid())
-  turnoId         String
-  capacidad       Int
-  region          String  
+  id        String   @id @default(cuid())
+  turnoId   String
+  regionId  String
+  capacidad Int
 
-  turno           Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+  turno     Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+  region    Region   @relation(fields: [regionId], references: [id], onDelete: Cascade)
 
-  @@unique([turnoId, region, capacidad], name: "turnoId_region_capacidad")
+  @@unique([turnoId, regionId, capacidad], name: "turnoId_regionId_capacidad")
 }
 
 model Plane {
@@ -254,5 +255,7 @@ model Region {
   tiempo_promedio_bus     Float
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
+
+  capacidadesTurno            CapacidadTurno[]
 }
 
