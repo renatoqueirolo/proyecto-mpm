@@ -37,13 +37,14 @@ if df_tt.empty:
     exit()
 
 # Capacidades por región (puedes modificar según demanda real)
-query = f'''
-SELECT region, capacidad
-FROM "CapacidadTurno"
-WHERE "turnoId" = '{turno_id}'
-'''
 
-df = pd.read_sql(query, engine)
+df = pd.read_sql(f'''
+    SELECT r.name AS region, ct.capacidad
+    FROM "CapacidadTurno" ct
+    JOIN "Region" r ON ct."regionId" = r.id
+    WHERE ct."turnoId" = '{turno_id}'
+''', engine)
+
 
 capacidades_por_region = {}
 for region, group in df.groupby('region'):
