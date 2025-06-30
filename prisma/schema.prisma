@@ -45,6 +45,14 @@ model Trabajador {
   historialAsignacion HistorialAsignacion[]
 }
 
+model Mensaje {
+  id                String             @id @default(cuid())
+  numero               String             
+  mensaje    String
+  esBot     Boolean  //
+}
+
+
 model Project {
   id          String    @id @default(cuid())
   name        String    @unique
