@@ -138,12 +138,11 @@ df_commercial_planes = pd.read_sql(f'''
     ORDER BY "departureTime" ASC;
 ''', engine)
 
+
 #Parametros modificables
 cursor.execute(
     '''
     SELECT  t."fecha",
-            p."min_hora",
-            p."max_hora",
             p."espera_conexion_subida",
             p."espera_conexion_bajada",
             p."max_tiempo_ejecucion",
@@ -165,9 +164,9 @@ if not row:
     print(f"No se encontró el turno con ID {turno_id}")
     exit()
 
-fecha_turno, min_hora, max_hora, espera_conexion_subida, espera_conexion_bajada, max_tiempo_ejecucion, tiempo_adicional_parada = row
-
-
+fecha_turno, espera_conexion_subida, espera_conexion_bajada, max_tiempo_ejecucion, tiempo_adicional_parada = row
+margen_desfase=150
+espera_permitida=60*8 #8 horas
 # -------------------------
 # Preprocesamiento
 # -------------------------
@@ -222,7 +221,7 @@ df_plane_capacity = (
     .reset_index(name='capacidad_total')
 )
 
-print("Capacidad Vuelos charter origen-destino")
+print("\nCapacidad Vuelos charter origen-destino")
 print(df_plane_capacity)
 
 # Para cada grupo origen–destino, elijo:
@@ -271,32 +270,48 @@ df_trabajadores = df_trabajadores[
     ~df_trabajadores["trabajador_id"].isin(not_assigned_ids)
 ].reset_index(drop=True)
 
+#--------------------------------------
 #Filtrar vuelos comerciales por hora
-print("\nCantidad de vuelos comerciales (sin filtrar):", len(df_commercial_planes))
+
+#planeturnos
+HV = {row["plane_turno_id"]: datetime_to_minutos(row["horario_salida"], fecha_turno)
+    for _, row in df_planes.iterrows()}
+
+HV_bajada = {row["plane_turno_id"]: datetime_to_minutos(row["horario_llegada"], fecha_turno)
+    for _, row in df_planes.iterrows()}
+
+min_hora = min(min(HV.values()), min(HV_bajada.values()))
+max_hora = max(max(HV.values()), max(HV_bajada.values()))
+
+print(f'\n Min hora vuelo: {min_hora} Max hora vuelo: {max_hora}')
+
+print("\nVuelos comerciales (sin filtrar):", len(df_commercial_planes))
 def vuelo_valido(row):
     id = row["id"]
     destino = row["destination"]
     origen = row["origin"]
-    hora_salida = datetime_to_minutos(row["departureTime"], fecha_turno)
-    hora_llegada = datetime_to_minutos(row["arrivalTime"], fecha_turno)
+    hora_salida = datetime_to_minutos_utc(row["departureTime"], fecha_turno)
+    hora_llegada = datetime_to_minutos_utc(row["arrivalTime"], fecha_turno)
 
     es_santiago = destino == "SANTIAGO" or origen == "SANTIAGO"
-
+    
     if es_santiago:
-        if hora_salida < min_hora or hora_salida > max_hora:
+        if hora_llegada < hora_salida:
             return False
-        if hora_llegada < min_hora or hora_llegada > max_hora:
+        if hora_salida < min_hora-margen_desfase:
+            return False
+        if hora_llegada > max_hora+margen_desfase:
             return False
     return True
 
 # Filtrar DataFrame
 df_commercial_planes = df_commercial_planes[df_commercial_planes.apply(vuelo_valido, axis=1)].reset_index(drop=True)
-print("Cantidad de vuelos comerciales (filtrados):", len(df_commercial_planes))
+print("Vuelos comerciales compatibles (filtrados):", len(df_commercial_planes))
 
 prev_C_CP = df_commercial_planes.set_index("id")["seatsAvailable"].to_dict() #capacidad
 prev_Precio_CP = df_commercial_planes.set_index("id")["priceClp"].to_dict() #precio
 
-df_commercial_plane_capacity = (
+prev_df_commercial_plane_capacity = (
     df_commercial_planes
     .assign(capacidad_restante=lambda df: df['id'].map(prev_C_CP))
     .groupby(['origin', 'destination'])['capacidad_restante']
@@ -304,9 +319,9 @@ df_commercial_plane_capacity = (
     .reset_index(name='capacidad_total')
 )
 print("\nCapacidad vuelos comerciales origen-destino")
-print(df_commercial_plane_capacity)
+print(prev_df_commercial_plane_capacity)
 
-for _, row in df_commercial_plane_capacity.iterrows():
+for _, row in prev_df_commercial_plane_capacity.iterrows():
     o, d, capacidad_total = row["origin"], row["destination"], int(row["capacidad_total"])
     demanda = len(df_trabajadores_vuelos_comerciales[
         (df_trabajadores_vuelos_comerciales["origen"] == o) &
@@ -330,11 +345,7 @@ for _, row in df_commercial_plane_capacity.iterrows():
             vuelos_seleccionados.append(vuelo["id"])
             acumulado += prev_C_CP[vuelo["id"]]
 
-        df_commercial_planes = df_commercial_planes[
-            ~((df_commercial_planes["origin"] == o) &
-              (df_commercial_planes["destination"] == d) &
-              (~df_commercial_planes["id"].isin(vuelos_seleccionados)))
-        ]
+        df_commercial_planes = df_commercial_planes[~((df_commercial_planes["origin"] == o) &(df_commercial_planes["destination"] == d) &(~df_commercial_planes["id"].isin(vuelos_seleccionados)))]
 
 vuelos_comerciales = df_commercial_planes["id"].tolist()
 
@@ -343,7 +354,13 @@ Precio_CP = df_commercial_planes.set_index("id")["priceClp"].to_dict() #precio
 # --------------------------------------
 # Trabajadores sin vuelo
 # --------------------------------------
-
+df_commercial_plane_capacity = (
+    df_commercial_planes
+    .assign(capacidad_restante=lambda df: df['id'].map(C_CP))
+    .groupby(['origin', 'destination'])['capacidad_restante']
+    .sum()
+    .reset_index(name='capacidad_total')
+)
 
 df_demand_com = df_trabajadores_vuelos_comerciales[df_trabajadores_vuelos_comerciales['use_plane'] == 1]
 comerciales_asignados_por_origen_dest = {}
@@ -414,12 +431,8 @@ region_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("
 use_plane_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("trabajador_id")["use_plane"].to_dict()
 use_bus_trabajadores_comerciales = df_trabajadores_vuelos_comerciales.set_index("trabajador_id")["use_bus"].to_dict()
 
-#planeturnos
-HV = {row["plane_turno_id"]: datetime_to_minutos(row["horario_salida"], fecha_turno)
-    for _, row in df_planes.iterrows()}
 
-HV_bajada = {row["plane_turno_id"]: datetime_to_minutos(row["horario_llegada"], fecha_turno)
-    for _, row in df_planes.iterrows()}
+
 
 #commercialplanes
 H_CP = {row["id"]: datetime_to_minutos_utc(row["departureTime"], fecha_turno)
@@ -427,6 +440,7 @@ H_CP = {row["id"]: datetime_to_minutos_utc(row["departureTime"], fecha_turno)
 
 H_CP_bajada = {row["id"]: datetime_to_minutos_utc(row["arrivalTime"], fecha_turno)
     for _, row in df_commercial_planes.iterrows()}
+
 
 #buses
 comunas_origen_bus = df_buses.set_index("id")["comunas_origen"].apply(lambda x: x if isinstance(x, list) else json.loads(x)).to_dict()
@@ -477,7 +491,7 @@ for tc in trabajadores_comerciales:
 # Restricción: capacidad buses y vuelos
 for b in buses:
     model.Add(sum(x[(t, b)] for t in trabajadores) + sum(x[(tc, b)] for tc in trabajadores_comerciales) <= CB[b])
-    HB_var[b] = model.NewIntVar(min_hora, max_hora, f'HB_{b}')
+    HB_var[b] = model.NewIntVar(min_hora-espera_conexion_subida-margen_desfase, max_hora+espera_conexion_bajada+margen_desfase, f'HB_{b}')
 for v in vuelos:
     model.Add(sum(y[(t, v)] for t in trabajadores) <= CV[v])
 for vc in vuelos_comerciales:
@@ -574,6 +588,39 @@ for t in trabajadores:
 
 print(f"\n🚫 Trabajadores sin buses compatibles: {incompatibles_bus}")
 print(f"🚫 Trabajadores sin vuelos compatibles: {incompatibles_vuelo}")
+
+#comerciales
+incompatibles_bus = 0
+incompatibles_vuelo = 0
+
+for t in trabajadores_comerciales:
+    subida = df_trabajadores_vuelos_comerciales[df_trabajadores_vuelos_comerciales["trabajador_id"] == t]["subida"].values[0]
+
+    # Validar compatibilidad solo si el trabajador puede usar bus
+    if use_bus_trabajadores_comerciales[t] == 1:
+        buses_validos = (
+            [b for b in buses if normalizar(comunas_trabajadores_comerciales[t]) in comunas_origen_bus[b]]
+            if subida else
+            [b for b in buses if normalizar(comunas_trabajadores_comerciales[t]) in comunas_destino_bus[b]]
+        )
+        if len(buses_validos) == 0:
+            print(f"⚠️ Trabajador {t} sin buses compatibles ({'SUBIDA' if subida else 'BAJADA'})")
+            incompatibles_bus += 1
+
+    # Validar compatibilidad solo si el trabajador puede usar vuelo
+    if use_plane_trabajadores_comerciales[t] == 1:
+        vuelos_validos = [
+            v for v in vuelos_comerciales
+            if normalizar(origen_commercial_planes[v]) == normalizar(origen_trabajadores_comerciales[t])
+            and normalizar(destino_commercial_planes[v]) == normalizar(destino_trabajadores_comerciales[t])
+        ]
+        if len(vuelos_validos) == 0:
+            print(f"⚠️ Trabajador {t} sin vuelos compatibles")
+            incompatibles_vuelo += 1
+
+
+print(f"\n🚫 Trabajadores Comerciales sin buses compatibles: {incompatibles_bus}")
+print(f"🚫 Trabajadores Comerciales sin vuelos compatibles: {incompatibles_vuelo}")
 
 # -------------------------
 # Función objetivo: minimizar espera
@@ -718,12 +765,33 @@ for b in buses:
                 INSERT INTO "AssignmentBus" (id, "trabajadorTurnoId", "busTurnoId")
                 VALUES (%s, %s, %s)
             ''', (str(uuid4()), t, b))
+
     for t in trabajadores_comerciales:
+        fila = df_trabajadores_vuelos_comerciales[df_trabajadores_vuelos_comerciales["trabajador_id"] == t].iloc[0]
+        subida = fila["subida"]
         if solver.Value(x[(t, b)]):
-            cursor.execute('''
-                INSERT INTO "AssignmentBus" (id, "trabajadorTurnoId", "busTurnoId")
-                VALUES (%s, %s, %s)
-            ''', (str(uuid4()), t, b))
+            if use_plane_trabajadores_comerciales[t]==0:
+                cursor.execute('''
+                    INSERT INTO "AssignmentBus" (id, "trabajadorTurnoId", "busTurnoId")
+                    VALUES (%s, %s, %s)
+                ''', (str(uuid4()), t, b))
+            else:
+                for v in vuelos_comerciales:
+                    if solver.Value(z[(t, v)]):
+                        if subida:
+                            if H_CP[v]-solver.Value(HB_var[b]) <= espera_permitida:
+                                cursor.execute('''
+                                    INSERT INTO "AssignmentBus" (id, "trabajadorTurnoId", "busTurnoId")
+                                    VALUES (%s, %s, %s)
+                                ''', (str(uuid4()), t, b))
+                                
+                        else:
+                            if solver.Value(HB_var[b])-H_CP_bajada[v] <= espera_permitida:
+                                cursor.execute('''
+                                    INSERT INTO "AssignmentBus" (id, "trabajadorTurnoId", "busTurnoId")
+                                    VALUES (%s, %s, %s)
+                                ''', (str(uuid4()), t, b))
+
 
 # Insertar asignaciones de avión
 for t in trabajadores:
@@ -736,15 +804,45 @@ for t in trabajadores:
 
 kpi_precio_comerciales=0
 for t in trabajadores_comerciales:
+    fila = df_trabajadores_vuelos_comerciales[df_trabajadores_vuelos_comerciales["trabajador_id"] == t].iloc[0]
+    subida = fila["subida"]
     for v in vuelos_comerciales:
         if solver.Value(z[(t, v)]):
-            cursor.execute('''
-                INSERT INTO "AssignmentCommercialPlane" (id, "trabajadorTurnoId", "commercialPlaneId")
-                VALUES (%s, %s, %s)
-            ''', (str(uuid4()), t, v))
-            kpi_precio_comerciales+=Precio_CP[v]
+            if use_bus_trabajadores_comerciales[t]==0:
+                cursor.execute('''
+                    INSERT INTO "AssignmentCommercialPlane" (id, "trabajadorTurnoId", "commercialPlaneId")
+                    VALUES (%s, %s, %s)
+                ''', (str(uuid4()), t, v))
+                kpi_precio_comerciales+=Precio_CP[v]
+            else:
+                for b in buses:
+                    if solver.Value(x[(t, b)]):
+                        if subida:
+                            if H_CP[v]-solver.Value(HB_var[b]) <= espera_permitida:
+                                cursor.execute('''
+                                    INSERT INTO "AssignmentCommercialPlane" (id, "trabajadorTurnoId", "commercialPlaneId")
+                                    VALUES (%s, %s, %s)
+                                ''', (str(uuid4()), t, v))
+                                kpi_precio_comerciales+=Precio_CP[v]
+                        else:
+                            if solver.Value(HB_var[b])-H_CP_bajada[v] <= espera_permitida:
+                                cursor.execute('''
+                                    INSERT INTO "AssignmentCommercialPlane" (id, "trabajadorTurnoId", "commercialPlaneId")
+                                    VALUES (%s, %s, %s)
+                                ''', (str(uuid4()), t, v))
+                                kpi_precio_comerciales+=Precio_CP[v]
 
-print(f"Gastos Vuelos Comerciales: {kpi_precio_comerciales} CLP")
+print(f"Costos Vuelos Comerciales: {kpi_precio_comerciales} CLP")
+
+if status in [cp_model.FEASIBLE, cp_model.OPTIMAL]:
+    cursor.execute(
+            '''
+            UPDATE "ParametrosModeloTurno"
+            SET    "costo_vuelos_comerciales" = %s
+            WHERE  "turnoId" = %s
+            ''',
+            (kpi_precio_comerciales, turno_id)
+        )
 # -------------------------
 # Actualizar horarios optimizados de buses
 # -------------------------

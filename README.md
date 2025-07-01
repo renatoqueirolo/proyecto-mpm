@@ -137,7 +137,6 @@ npm run dev
 ```bash
 npx prisma migrate reset
 npx prisma migrate dev --name nombre-migrate
-npx prisma db seed
 ```
 
 ---
