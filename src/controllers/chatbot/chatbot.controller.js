@@ -101,15 +101,18 @@ console.log("Resultado de la consulta:", result);
   } catch (e) {
     return res.status(500).json({ error: "Error al consultar la base de datos", detalle: e.message });
   }
-
+  if (!pregunta.includes("todos")) {
+    result.trabajadorTurnos = result.trabajadorTurnos[0] ? [result.trabajadorTurnos[0]] : [];
+  }
   // 3. Generar respuesta conversacional con prompt2
-const prompt2 = `Un usuario me pidió: "${pregunta}". En la base de datos estan los siguientes datos: ${JSON.stringify(result, null, 2)}.
+const prompt2 = `Un usuario me pidió: "${pregunta}". En la base de datos estan los siguientes datos: ${JSON.stringify(result.trabajadorTurnos[0], null, 2)}.
 
 Tu tarea es generar una respuesta clara, explicativa y conversacional basada en estos datos, pero solo respondiendo la pregunta del usuario. Sigue **estrictamente** estas reglas:
 
 ✅ Reglas obligatorias:
 - Si el resultado está vacío, responde que no se encontraron resultados.
-- Si el usuario pregunta por vuelos o buses asignados, entrega **solo el más reciente** (según la fecha de llegada o salida más nueva, en formato ISO). A menos que el usuario te pida por todos sus vuelos o todos sus buses. Si no hay ninguno, indícalo claramente.
+- Si el usuario pregunta por vuelos o buses asignados, entrega **solo el más reciente** (según la fecha de llegada o salida más nueva, en formato ISO). Si no hay ninguno, indícalo claramente.
+- Solo si el usuario pregunta por todos sus vuelos o buses, muestra **todos los asignados**.
 - **Ordena siempre por la fecha más reciente** (campo: "horario_llegada" o "horario_salida").
 - No muestres ningún valor como "Pendiente". Omite ese campo si no tiene valor claro.
 - No incluyas ningún campo de tipo ID.

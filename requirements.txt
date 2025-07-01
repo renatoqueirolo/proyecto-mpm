@@ -9,3 +9,4 @@ XlsxWriter
 requests
 psutil
 fake_useragent
+backports.zoneinfo; python_version < "3.9"

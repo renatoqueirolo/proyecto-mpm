@@ -12,7 +12,7 @@ from sqlalchemy import create_engine
 import unicodedata
 import time
 import psutil
-from zoneinfo import ZoneInfo
+from backports.zoneinfo import ZoneInfo
 from datetime import datetime, timezone
 
 process = psutil.Process(os.getpid())
