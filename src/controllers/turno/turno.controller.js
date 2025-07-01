@@ -22,7 +22,7 @@ async function crearTurno(req, res) {
     });
 
     if (!projectObj || !shiftTypeObj) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Proyecto o tipo de turno no encontrado',
         details: !projectObj ? 'Proyecto inválido' : 'Tipo de turno inválido'
       });
@@ -32,15 +32,13 @@ async function crearTurno(req, res) {
 
     const capacidades_por_region = {
       V: [12, 20, 10],
-      IV: [16, 8],
-      RM: [20, 30],
+      RM: [30],
     };
 
-    // Ejecutar todo en una transacción
     const resultado = await prisma.$transaction(async (tx) => {
       const turno = await tx.turno.create({
         data: {
-          nombre: nombre,
+          nombre,
           fecha: new Date(fecha),
           creadoPorId: creadoPorIdString,
           proyectoId: projectObj.id,
@@ -50,38 +48,39 @@ async function crearTurno(req, res) {
       });
 
       await tx.parametrosModeloTurno.create({
-        data: {
-          turnoId: turno.id,
-        },
+        data: { turnoId: turno.id },
       });
 
+      const regiones = await tx.region.findMany();
       const insertsCapacidad = [];
 
-      for (const region in capacidades_por_region) {
-        const capacidades = capacidades_por_region[region];
+      for (const region of regiones) {
+        const capacidades = capacidades_por_region[region.name] || [30];
         for (const capacidad of capacidades) {
-          insertsCapacidad.push(
-            tx.capacidadTurno.upsert({
-              where: {
-                turnoId_region_capacidad: {
+          const existe = await tx.capacidadTurno.findFirst({
+            where: {
+              turnoId: turno.id,
+              regionId: region.id,
+              capacidad,
+            },
+          });
+
+          if (!existe) {
+            insertsCapacidad.push(
+              tx.capacidadTurno.create({
+                data: {
                   turnoId: turno.id,
-                  region,
+                  regionId: region.id,
                   capacidad,
                 },
-              },
-              update: {}, // si ya existe no cambia nada
-              create: {
-                turnoId: turno.id,
-                region,
-                capacidad,
-              },
-            })
-          );
+              })
+            );
+          }
+          ;
         }
       }
 
       await Promise.all(insertsCapacidad);
-
       return turno;
     });
 
@@ -514,36 +513,56 @@ async function editarTurno(req, res) {
   }
 }
 
-
 async function obtenerCapacidadTurno(req, res) {
   try {
     const { id } = req.params;
     const capacidadTurno = await prisma.capacidadTurno.findMany({
       where: { turnoId: id },
-      // Puedes incluir más detalles si tu modelo lo permite
+      include: {
+        region: true,
+      },
     });
 
-    res.json(capacidadTurno);
+    const capacidadesFormateadas = capacidadTurno.map(c => ({
+      id: c.id,
+      region: c.region.name,
+      capacidad: c.capacidad,
+    }));
+
+    res.json(capacidadesFormateadas);
   } catch (error) {
+    console.error("Error al obtener capacidades del turno:", error);
     res.status(500).json({ error: 'Error al obtener capacidades del turno' });
   }
 }
+
 
 async function agregarCapacidadTurno(req, res) {
   try {
     const { id } = req.params;
     const { capacidades_por_region } = req.body;
+
     const turno = await prisma.turno.findUnique({
-      where: { id: id },
+      where: { id },
     });
+
     for (const region in capacidades_por_region) {
+      const regionObj = await prisma.region.findUnique({
+        where: { name: region }
+      });
+
+      if (!regionObj) {
+        console.warn(`⚠️ Región ${region} no encontrada, se omite.`);
+        continue;
+      }
+
       const capacidades = capacidades_por_region[region];
 
       for (const capacidad of capacidades) {
         const existe = await prisma.capacidadTurno.findFirst({
           where: {
             turnoId: turno.id,
-            region: region,
+            regionId: regionObj.id,
             capacidad: capacidad,
           },
         });
@@ -552,7 +571,7 @@ async function agregarCapacidadTurno(req, res) {
           await prisma.capacidadTurno.create({
             data: {
               turnoId: turno.id,
-              region: region,
+              regionId: regionObj.id,
               capacidad: capacidad,
             },
           });
@@ -560,13 +579,13 @@ async function agregarCapacidadTurno(req, res) {
       }
     }
 
-
     res.status(204).send();
   } catch (error) {
     console.error("Error al agregar capacidad al turno:", error);
     res.status(500).json({ error: "Error al agregar capacidad al turno" });
   }
 }
+
 async function editarCapacidadTurno(req, res) {
   try {
     const { capacidades} = req.body;
@@ -1560,7 +1579,23 @@ async function obtenerAsignacionesDeTurno(req, res) {
       }
     }));
 
-    res.json({ buses, vuelos, vuelos_comerciales });
+    const trabajadoresSinAsignacion = await prisma.trabajadorTurno.findMany({
+      where: {
+        turnoId: id,
+        NOT: {
+          OR: [
+            { id: { in: buses.map(b => b.trabajadorTurno.id) } },
+            { id: { in: vuelos.map(v => v.trabajadorTurno.id) } },
+            { id: { in: vuelos_comerciales.map(vc => vc.trabajadorTurno.id) } }
+          ]
+        }
+      },
+      include: {
+        trabajador: true
+      }
+    });
+
+    res.json({ buses, vuelos, vuelos_comerciales, trabajadoresSinAsignacion });
   } catch (error) {
     console.error("Error al obtener asignaciones:", error);
     res.status(500).json({ error: 'Error al obtener asignaciones' });

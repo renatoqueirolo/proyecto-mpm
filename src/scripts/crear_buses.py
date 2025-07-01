@@ -37,13 +37,14 @@ if df_tt.empty:
     exit()
 
 # Capacidades por región (puedes modificar según demanda real)
-query = f'''
-SELECT region, capacidad
-FROM "CapacidadTurno"
-WHERE "turnoId" = '{turno_id}'
-'''
 
-df = pd.read_sql(query, engine)
+df = pd.read_sql(f'''
+    SELECT r.name AS region, ct.capacidad
+    FROM "CapacidadTurno" ct
+    JOIN "Region" r ON ct."regionId" = r.id
+    WHERE ct."turnoId" = '{turno_id}'
+''', engine)
+
 
 capacidades_por_region = {}
 for region, group in df.groupby('region'):
@@ -101,8 +102,23 @@ def asignar_buses_por_comuna(df_filtrado, nombre="SUBIDA"):
         base_region = remanentes[base_comuna]["region"]
         capacidades = capacidades_por_region_sorted.get(base_region, [])
         if not capacidades:
-            print(f"⚠️ No hay capacidades definidas para región {base_region}")
-            break
+            capacidades = [30]
+            capacidades_por_region_sorted[base_region] = capacidades
+
+            cursor.execute('''
+                SELECT COUNT(*) FROM "CapacidadTurno"
+                WHERE "turnoId" = %s AND "regionId" = (
+                    SELECT id FROM "Region" WHERE name = %s
+                ) AND capacidad = 30
+            ''', (turno_id, base_region))
+
+            ya_existe = cursor.fetchone()[0] > 0
+            if not ya_existe:
+                cursor.execute('''
+                    INSERT INTO "CapacidadTurno" (id, "turnoId", "regionId", capacidad)
+                    VALUES (%s, %s, (SELECT id FROM "Region" WHERE name = %s), %s)
+                ''', (str(uuid4()), turno_id, base_region, 30))
+                print(f"✅ CapacidadTurno añadida para región {base_region}, turno {turno_id}, capacidad 30")
 
         grupo = [(base_comuna, remanentes[base_comuna]["cantidad"])]
         del remanentes[base_comuna]

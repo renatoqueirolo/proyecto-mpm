@@ -41,5 +41,5 @@ __pycache__/
 
 # Output scraper    
 src/scripts/scraper/output/
-
+latam_page.html
 
