@@ -144,6 +144,7 @@ model Plane {
   ciudad_destino  String
   horario_salida String
   horario_llegada String
+  generico        Boolean     @default(false)
 
   planeTurno PlaneTurno[]
 }
@@ -224,6 +225,8 @@ model ParametrosModeloTurno {
   turnoId     String   @unique
   espera_conexion_subida   Int    @default(180)
   espera_conexion_bajada   Int    @default(20)
+  max_espera_permitida     Int    @default(480)
+  margen_desfase           Int    @default(150)
   tiempo_promedio_espera   Float    @default(0)
   costo_vuelos_comerciales Float    @default(0)
   max_tiempo_ejecucion     Int      @default(120)

@@ -145,6 +145,8 @@ cursor.execute(
     SELECT  t."fecha",
             p."espera_conexion_subida",
             p."espera_conexion_bajada",
+            p."max_espera_permitida",
+            p."margen_desfase",
             p."max_tiempo_ejecucion",
             p."tiempo_adicional_parada"
     FROM    "Turno"                AS t
@@ -164,9 +166,8 @@ if not row:
     print(f"No se encontró el turno con ID {turno_id}")
     exit()
 
-fecha_turno, espera_conexion_subida, espera_conexion_bajada, max_tiempo_ejecucion, tiempo_adicional_parada = row
-margen_desfase=150
-espera_permitida=60*8 #8 horas
+fecha_turno, espera_conexion_subida, espera_conexion_bajada, max_espera_permitida, margen_desfase, max_tiempo_ejecucion, tiempo_adicional_parada = row
+
 # -------------------------
 # Preprocesamiento
 # -------------------------
@@ -779,14 +780,14 @@ for b in buses:
                 for v in vuelos_comerciales:
                     if solver.Value(z[(t, v)]):
                         if subida:
-                            if H_CP[v]-solver.Value(HB_var[b]) <= espera_permitida:
+                            if H_CP[v]-solver.Value(HB_var[b]) <= max_espera_permitida:
                                 cursor.execute('''
                                     INSERT INTO "AssignmentBus" (id, "trabajadorTurnoId", "busTurnoId")
                                     VALUES (%s, %s, %s)
                                 ''', (str(uuid4()), t, b))
                                 
                         else:
-                            if solver.Value(HB_var[b])-H_CP_bajada[v] <= espera_permitida:
+                            if solver.Value(HB_var[b])-H_CP_bajada[v] <= max_espera_permitida:
                                 cursor.execute('''
                                     INSERT INTO "AssignmentBus" (id, "trabajadorTurnoId", "busTurnoId")
                                     VALUES (%s, %s, %s)
@@ -818,14 +819,14 @@ for t in trabajadores_comerciales:
                 for b in buses:
                     if solver.Value(x[(t, b)]):
                         if subida:
-                            if H_CP[v]-solver.Value(HB_var[b]) <= espera_permitida:
+                            if H_CP[v]-solver.Value(HB_var[b]) <= max_espera_permitida:
                                 cursor.execute('''
                                     INSERT INTO "AssignmentCommercialPlane" (id, "trabajadorTurnoId", "commercialPlaneId")
                                     VALUES (%s, %s, %s)
                                 ''', (str(uuid4()), t, v))
                                 kpi_precio_comerciales+=Precio_CP[v]
                         else:
-                            if solver.Value(HB_var[b])-H_CP_bajada[v] <= espera_permitida:
+                            if solver.Value(HB_var[b])-H_CP_bajada[v] <= max_espera_permitida:
                                 cursor.execute('''
                                     INSERT INTO "AssignmentCommercialPlane" (id, "trabajadorTurnoId", "commercialPlaneId")
                                     VALUES (%s, %s, %s)

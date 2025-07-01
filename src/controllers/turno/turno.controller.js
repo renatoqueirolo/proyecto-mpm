@@ -55,7 +55,7 @@ async function crearTurno(req, res) {
       const insertsCapacidad = [];
 
       for (const region of regiones) {
-        const capacidades = capacidades_por_region[region.name] || [30];
+        const capacidades = capacidades_por_region[region.name] || [20];
         for (const capacidad of capacidades) {
           const existe = await tx.capacidadTurno.findFirst({
             where: {
