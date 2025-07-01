@@ -2252,10 +2252,9 @@ async function actualizarParametrosModeloTurno(req, res) {
       espera_conexion_subida,
       espera_conexion_bajada,
       tiempo_promedio_espera,
+      costo_vuelos_comerciales,
       max_tiempo_ejecucion,
       tiempo_adicional_parada,
-      min_hora,
-      max_hora,
     } = req.body;
 
     // Verifica existencia del turno
@@ -2280,10 +2279,9 @@ async function actualizarParametrosModeloTurno(req, res) {
         espera_conexion_subida,
         espera_conexion_bajada,
         tiempo_promedio_espera,
+        costo_vuelos_comerciales,
         max_tiempo_ejecucion,
         tiempo_adicional_parada,
-        min_hora,
-        max_hora,
       },
     });
 

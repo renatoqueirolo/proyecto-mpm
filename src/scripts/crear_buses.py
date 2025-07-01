@@ -77,6 +77,26 @@ def asignar_buses_por_comuna(df_filtrado, nombre="SUBIDA"):
             print(f"⚠️ Comuna '{comuna}' no está registrada en tabla Region para {'subida' if es_subida else 'bajada'}")
             continue
 
+        if region not in capacidades_por_region:
+            print(f"⚠️ Región '{region}' no tiene capacidades definidas. Se asigna capacidad por defecto = 30")
+            capacidades_por_region[region] = [30]
+
+            # Agregar a la tabla CapacidadTurno si no existe aún
+            cursor.execute('''
+                SELECT COUNT(*) FROM "CapacidadTurno"
+                WHERE "turnoId" = %s AND "regionId" = (
+                    SELECT id FROM "Region" WHERE name = %s
+                ) AND capacidad = 30
+            ''', (turno_id, region))
+            ya_existe = cursor.fetchone()[0] > 0
+            
+            if not ya_existe:
+                cursor.execute('''
+                    INSERT INTO "CapacidadTurno" (id, "turnoId", "regionId", capacidad)
+                    VALUES (%s, %s, (SELECT id FROM "Region" WHERE name = %s), %s)
+                ''', (str(uuid4()), turno_id, region, 30))
+                print(f"✅ CapacidadTurno añadida para región {region}, turno {turno_id}, capacidad 30")
+
         capacidades = sorted(capacidades_por_region.get(region, []), reverse=True)
 
         for cap in capacidades:
