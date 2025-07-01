@@ -34,6 +34,7 @@ const importarPlanes = async () => {
         horario_llegada: String(horario_llegada).trim(),
         ciudad_origen: String(ciudad_origen).trim(),
         ciudad_destino: String(ciudad_destino).trim(),
+        generico: true,
       });
     });
 
