@@ -1281,14 +1281,27 @@ const asignarAvionesATurno = async (req, res) => {
 
     // Función para combinar fecha del turno y hora tipo "18:30"
     const construirFechaHora = (fechaBase, horaStr) => {
-      const [hh, mm] = horaStr.split(":").map(Number);
-      const minutosTotales = hh * 60 + mm;
-      const sumarDia = minutosTotales < 780; // antes de las 13:00
+      // Convierte la fecha base a UTC
       const fechaBaseAjustada = new Date(fechaBase);
-      if (sumarDia) fechaBaseAjustada.setDate(fechaBaseAjustada.getDate() + 1);
-      fechaBaseAjustada.setHours(hh+20, mm, 0, 0);
+      const [hh, mm] = horaStr.split(":").map(Number);
+
+      // Convierte los minutos de la hora a una representación en minutos totales
+      const minutosTotales = hh * 60 + mm;
+
+      // Verifica si la hora es antes de las 13:00, en ese caso, sumamos un día.
+      const sumarDia = minutosTotales < 780;
+
+      // Ajuste la fecha y hora, manteniendo UTC
+      fechaBaseAjustada.setUTCHours(hh, mm, 0, 0);  // Establecer la hora en UTC
+      
+      // Si la hora es antes de las 13:00, sumamos un día (solo para casos de cambio de día en la madrugada).
+      if (sumarDia) {
+        fechaBaseAjustada.setUTCDate(fechaBaseAjustada.getUTCDate() + 1);
+      }
+
       return fechaBaseAjustada;
     };
+
 
     const inserts = nuevosAviones.map(avion => {
       const plane = mapaPlanes.get(avion.planeId);
