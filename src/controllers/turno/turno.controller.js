@@ -5,7 +5,7 @@ const PdfPrinter = require('pdfmake');
 const { getFlights } = require('../../services/commercialFlightService');
 const { PrismaClient, ShiftType } = require('@prisma/client');
 const prisma = new PrismaClient();
-const {enviarMensaje} = require('../chatbot/whatsapp.controller');
+const { enviarMensaje } = require('../chatbot/whatsapp.controller');
 // Crear turno
 async function crearTurno(req, res) {
   try {
@@ -119,19 +119,19 @@ const getCommercialPlanes = async (req, res) => {
 
     // 5) Normalizar precios y adjuntar turnoId
     const vuelos = vuelosRaw.map(f => ({
-      airline:         f.airline,
-      flightCode:      f.flightCode,
-      origin:          f.origin,
-      destination:     f.destination,
-      departureDate:   new Date(f.departureDate),
-      departureTime:   new Date(f.departureTime),
-      arrivalTime:     new Date(f.arrivalTime),
+      airline: f.airline,
+      flightCode: f.flightCode,
+      origin: f.origin,
+      destination: f.destination,
+      departureDate: new Date(f.departureDate),
+      departureTime: new Date(f.departureTime),
+      arrivalTime: new Date(f.arrivalTime),
       durationMinutes: f.durationMinutes,
-      priceClp:        f.priceClp.toString(),
-      direct:          f.direct,
-      stops:           f.stops,
-      stopsDetail:     f.stopsDetail,
-      seatsAvailable:  f.seatsAvailable,
+      priceClp: f.priceClp.toString(),
+      direct: f.direct,
+      stops: f.stops,
+      stopsDetail: f.stopsDetail,
+      seatsAvailable: f.seatsAvailable,
 
       // ← clave foránea para asociar al turno
       turnoId,
@@ -192,10 +192,10 @@ module.exports = {
 async function obtenerTurnos(req, res) {
   try {
     const { proyectos, role } = req.user;
-    
+
     // Prepare the where clause based on projects
     let whereClause = {};
-    
+
     // If the user is not a VISUALIZADOR, filter by projects
     if (role !== "VISUALIZADOR") {
       // Get all the project IDs from the names in proyectos array
@@ -207,9 +207,9 @@ async function obtenerTurnos(req, res) {
         },
         select: { id: true }
       });
-      
+
       const projectIds = projectsData.map(p => p.id);
-      
+
       whereClause = {
         proyectoId: {
           in: projectIds
@@ -221,7 +221,7 @@ async function obtenerTurnos(req, res) {
     const turnos = await prisma.turno.findMany({
       where: whereClause,
       orderBy: { fecha: 'desc' },
-      include: { 
+      include: {
         trabajadoresTurno: true,
         busTurno: true,
         planeTurno: true,
@@ -230,14 +230,14 @@ async function obtenerTurnos(req, res) {
         tipoTurno: true  // Include ShiftType
       },
     });
-    
+
     // Transform the data to match the previous format expected by the frontend
     const transformedTurnos = turnos.map(turno => ({
       ...turno,
       proyecto: turno.proyecto.name,     // Use project name instead of ID
       tipoTurno: turno.tipoTurno.name    // Use shiftType name instead of ID
     }));
-    
+
     res.json(transformedTurnos);
   } catch (error) {
     console.error('Error al obtener turnos:', error);
@@ -264,7 +264,7 @@ async function obtenerTurno(req, res) {
         busTurno: true,
         planeTurno: {
           include: {
-            plane: true, 
+            plane: true,
           },
         },
       },
@@ -325,7 +325,7 @@ async function obtenerCapacidadAvionesTurno(req, res) {
 
     // 2. Obtener los detalles de los aviones (ciudad_origen y ciudad_destino)
     const planeIds = avionesPorCombinacion.map((avion) => avion.planeId);
-    
+
     // Obtener los detalles de los aviones por planeId
     const planes = await prisma.plane.findMany({
       where: {
@@ -413,14 +413,14 @@ async function obtenerCapacidadUsadaPorCombinacion(req, res) {
     // Unir los resultados de la capacidad de los aviones con los detalles de los trabajadores
     const resultado = avionesPorCombinacion.map((avion) => {
       const avionDetalle = avionesDetalles.find((plane) => plane.id === avion.planeId);
-      
+
       // Convertir origen y destino de los aviones y trabajadores a mayúsculas para compararlos
       const origenDestino = `${avionDetalle.ciudad_origen.toUpperCase()} → ${avionDetalle.ciudad_destino.toUpperCase()}`;
 
       // Buscar el conteo de trabajadores con ese origen y destino
       const trabajadoresCombinacion = trabajadoresPorCombinacion.find((trabajador) => {
         return trabajador.origen.toUpperCase() === avionDetalle.ciudad_origen.toUpperCase() &&
-               trabajador.destino.toUpperCase() === avionDetalle.ciudad_destino.toUpperCase();
+          trabajador.destino.toUpperCase() === avionDetalle.ciudad_destino.toUpperCase();
       });
 
       return {
@@ -501,7 +501,7 @@ async function editarTurno(req, res) {
     });
 
     if (!projectObj || !shiftTypeObj) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Proyecto o tipo de turno no encontrado'
       });
     }
@@ -538,7 +538,7 @@ async function editarTurno(req, res) {
       await Promise.all(actualizaciones);
     }
 
-    
+
 
     res.status(200).json({ message: `Turno actualizado` });
   } catch (error) {
@@ -593,7 +593,7 @@ async function enviarNotificaciones(req, res) {
       if (trabajador.telefono === null || trabajador.telefono === undefined) {
         continue
       }
-      var numero = trabajador.telefono;
+      var numero = "whatsapp:" + trabajador.telefono;
       const asignacion = asignaciones[i];
       if (!asignacion) continue;
 
@@ -696,18 +696,19 @@ async function agregarCapacidadTurno(req, res) {
 
 async function editarCapacidadTurno(req, res) {
   try {
-    const { capacidades} = req.body;
+    const { capacidades } = req.body;
     for (const capacidad of capacidades) {
       id = capacidad.id;
       capacidadNumero = capacidad.capacidad;
       region = capacidad.region;
       await prisma.capacidadTurno.update({
-      where: { id },
-      data: {
-        region: region,
-        capacidad: capacidadNumero,
-      },
-    })};
+        where: { id },
+        data: {
+          region: region,
+          capacidad: capacidadNumero,
+        },
+      })
+    };
     res.status(204).send();
   } catch (error) {
     console.error("Error al editar capacidad:", error);
@@ -717,19 +718,20 @@ async function editarCapacidadTurno(req, res) {
 
 async function editarAsignacionTurnoBus(req, res) {
   try {
-    const { asignaciones} = req.body;
+    const { asignaciones } = req.body;
     for (const asignacion of asignaciones) {
       trabajadorTurnoId = asignacion.trabajadorTurnoId;
       busTurnoId = asignacion.busTurnoId;
       const asignacion_turno = await prisma.assignmentBus.findFirst({
-      where: { trabajadorTurnoId: trabajadorTurnoId },
-    });
+        where: { trabajadorTurnoId: trabajadorTurnoId },
+      });
       await prisma.assignmentBus.update({
-      where: {  id: asignacion_turno.id },
-      data: {
-        busTurnoId: busTurnoId,
-      },
-    })};
+        where: { id: asignacion_turno.id },
+        data: {
+          busTurnoId: busTurnoId,
+        },
+      })
+    };
     res.status(204).send();
   } catch (error) {
     console.error("Error al editar capacidad:", error);
@@ -739,19 +741,20 @@ async function editarAsignacionTurnoBus(req, res) {
 
 async function editarAsignacionTurnoPlane(req, res) {
   try {
-    const { asignaciones} = req.body;
+    const { asignaciones } = req.body;
     for (const asignacion of asignaciones) {
       trabajadorTurnoId = asignacion.trabajadorTurnoId;
       planeTurnoId = asignacion.planeTurnoId;
       const asignacion_turno = await prisma.assignmentPlane.findFirst({
-      where: { trabajadorTurnoId: trabajadorTurnoId },
-    });
+        where: { trabajadorTurnoId: trabajadorTurnoId },
+      });
       await prisma.assignmentPlane.update({
-      where: {  id: asignacion_turno.id },
-      data: {
-        planeTurnoId: planeTurnoId,
-      },
-    })};
+        where: { id: asignacion_turno.id },
+        data: {
+          planeTurnoId: planeTurnoId,
+        },
+      })
+    };
     res.status(204).send();
   } catch (error) {
     console.error("Error al editar capacidad:", error);
@@ -778,14 +781,14 @@ async function obtenerAsignacionTurnoBus(req, res) {
       return res.status(404).json({ error: "BusTurno no encontrado" });
     }
 
-let { comunas_origen, comunas_destino, turnoId } = busTurno;
-comunas_destino = JSON.parse(comunas_destino);
-comunas_origen = JSON.parse(comunas_origen);
+    let { comunas_origen, comunas_destino, turnoId } = busTurno;
+    comunas_destino = JSON.parse(comunas_destino);
+    comunas_origen = JSON.parse(comunas_origen);
 
     // 2. Obtener trabajadores asignados a ese bus
     const asignados = await prisma.assignmentBus.findMany({
-  where: { busTurnoId },
-        include: {
+      where: { busTurnoId },
+      include: {
         trabajadorTurno: {
           include: {
             trabajador: true
@@ -794,28 +797,28 @@ comunas_origen = JSON.parse(comunas_origen);
         busTurno: true
       }
 
-});
+    });
     const subida = comunas_destino.includes("SANTIAGO");
 
-const filtroAcercamiento = subida ? { acercamiento: { in: comunas_origen } } : { acercamiento: { in: comunas_destino } };
+    const filtroAcercamiento = subida ? { acercamiento: { in: comunas_origen } } : { acercamiento: { in: comunas_destino } };
 
 
     // 3. Obtener trabajadores disponibles para asignar 
-const trabajadoresDisponibles = await prisma.trabajadorTurno.findMany({
-  where: {
-    turnoId: turnoId,
-    subida: subida,
-    ...filtroAcercamiento
-  },
-  include: {
-    trabajador: true
-  }
-});
-// 1. Obtener los IDs de los trabajadores ya asignados al bus
-const idsAsignados = new Set(asignados.map(a => a.trabajadorTurno.trabajador.id));
+    const trabajadoresDisponibles = await prisma.trabajadorTurno.findMany({
+      where: {
+        turnoId: turnoId,
+        subida: subida,
+        ...filtroAcercamiento
+      },
+      include: {
+        trabajador: true
+      }
+    });
+    // 1. Obtener los IDs de los trabajadores ya asignados al bus
+    const idsAsignados = new Set(asignados.map(a => a.trabajadorTurno.trabajador.id));
 
-// 2. Filtrar los trabajadores disponibles para que no estén en la lista de asignados
-const trabajadoresFiltrados = trabajadoresDisponibles.filter(t => !idsAsignados.has(t.trabajador.id));
+    // 2. Filtrar los trabajadores disponibles para que no estén en la lista de asignados
+    const trabajadoresFiltrados = trabajadoresDisponibles.filter(t => !idsAsignados.has(t.trabajador.id));
 
 
     return res.status(200).json({
@@ -831,14 +834,15 @@ const trabajadoresFiltrados = trabajadoresDisponibles.filter(t => !idsAsignados.
 
 async function obtenerAsignacionTurnoPlane(req, res) {
   try {
-    const { planeTurnoId , id} = req.params;
+    const { planeTurnoId, id } = req.params;
 
     // 1. Buscar el busTurno con sus datos
     const planeTurno = await prisma.planeTurno.findUnique({
       where: { id: planeTurnoId },
       include: {
         plane: true,
-    }});
+      }
+    });
 
     if (!planeTurno) {
       return res.status(404).json({ error: "PlaneTurno no encontrado" });
@@ -846,8 +850,8 @@ async function obtenerAsignacionTurnoPlane(req, res) {
 
     // 2. Obtener trabajadores asignados a ese avion
     const asignados = await prisma.assignmentPlane.findMany({
-  where: { planeTurnoId },
-        include: {
+      where: { planeTurnoId },
+      include: {
         trabajadorTurno: {
           include: {
             trabajador: true
@@ -856,32 +860,33 @@ async function obtenerAsignacionTurnoPlane(req, res) {
         planeTurno: {
           include: {
             plane: true
+          }
         }
-      }
 
-}});
+      }
+    });
     const subida = planeTurno.plane.ciudad_origen.includes("Santiago");
 
-const filtroAcercamiento = subida
-  ? { destino: planeTurno.plane.ciudad_destino.toUpperCase() }
-  : { origen: planeTurno.plane.ciudad_origen.toUpperCase() };
+    const filtroAcercamiento = subida
+      ? { destino: planeTurno.plane.ciudad_destino.toUpperCase() }
+      : { origen: planeTurno.plane.ciudad_origen.toUpperCase() };
 
     // 3. Obtener trabajadores disponibles para asignar 
-const trabajadoresDisponibles = await prisma.trabajadorTurno.findMany({
-  where: {
-    turnoId: id,
-    subida: subida,
-    ...filtroAcercamiento
-  },
-  include: {
-    trabajador: true
-  }
-});
-// 1. Obtener los IDs de los trabajadores ya asignados al bus
-const idsAsignados = new Set(asignados.map(a => a.trabajadorTurno.trabajador.id));
+    const trabajadoresDisponibles = await prisma.trabajadorTurno.findMany({
+      where: {
+        turnoId: id,
+        subida: subida,
+        ...filtroAcercamiento
+      },
+      include: {
+        trabajador: true
+      }
+    });
+    // 1. Obtener los IDs de los trabajadores ya asignados al bus
+    const idsAsignados = new Set(asignados.map(a => a.trabajadorTurno.trabajador.id));
 
-// 2. Filtrar los trabajadores disponibles para que no estén en la lista de asignados
-const trabajadoresFiltrados = trabajadoresDisponibles.filter(t => !idsAsignados.has(t.trabajador.id));
+    // 2. Filtrar los trabajadores disponibles para que no estén en la lista de asignados
+    const trabajadoresFiltrados = trabajadoresDisponibles.filter(t => !idsAsignados.has(t.trabajador.id));
 
 
     return res.status(200).json({
@@ -894,7 +899,7 @@ const trabajadoresFiltrados = trabajadoresDisponibles.filter(t => !idsAsignados.
     console.error("Error al obtener asignación de turno:", error);
     res.status(500).json({ error: "Error al obtener asignación de turno" });
   }
-} 
+}
 
 
 async function obtenerCompatiblesTurnoBus(req, res) {
@@ -941,16 +946,18 @@ async function obtenerCompatiblesTurnoBus(req, res) {
     });
 
     const asignacionBus = await prisma.assignmentBus.findFirst({
-      where: { trabajadorTurnoId: trabajadorTurnoId }    });
+      where: { trabajadorTurnoId: trabajadorTurnoId }
+    });
     const idBus = asignacionBus.busTurnoId;
     const asignados = await prisma.assignmentBus.findMany({
       where: { busTurnoId: idBus },
-      include: {trabajadorTurno: {include: {trabajador: true}}}});
+      include: { trabajadorTurno: { include: { trabajador: true } } }
+    });
     // 3. Obtener los IDs de los trabajadores ya asignados al bus
     const idsAsignados = new Set(asignados.map(a => a.trabajadorTurno.trabajador.id));
 
     // 4. Filtrar trabajadores:
-    const trabajadoresFiltrados = trabajadoresDisponibles.filter(t => 
+    const trabajadoresFiltrados = trabajadoresDisponibles.filter(t =>
       !idsAsignados.has(t.trabajador.id) && t.id !== trabajadorTurno.id
     );
 
@@ -1002,18 +1009,20 @@ async function obtenerCompatiblesTurnoPlane(req, res) {
         trabajador: true
       }
     });
-        const asignacionPlane = await prisma.assignmentPlane.findFirst({
-      where: { trabajadorTurnoId: trabajadorTurnoId }    });
+    const asignacionPlane = await prisma.assignmentPlane.findFirst({
+      where: { trabajadorTurnoId: trabajadorTurnoId }
+    });
     const planeId = asignacionPlane.planeTurnoId;
     const asignados = await prisma.assignmentPlane.findMany({
       where: { planeTurnoId: planeId },
-      include: {trabajadorTurno: {include: {trabajador: true}}}});
+      include: { trabajadorTurno: { include: { trabajador: true } } }
+    });
     // 3. Obtener los IDs de los trabajadores ya asignados al bus
     const idsAsignados = new Set(asignados.map(a => a.trabajadorTurno.trabajador.id));
 
 
     // 4. Filtrar trabajadores:
-    const trabajadoresFiltrados = trabajadoresDisponibles.filter(t => 
+    const trabajadoresFiltrados = trabajadoresDisponibles.filter(t =>
       !idsAsignados.has(t.trabajador.id) && t.id !== trabajadorTurno.id
     );
 
@@ -1029,17 +1038,25 @@ async function obtenerCompatiblesTurnoPlane(req, res) {
 
 async function intercambioAsignacionTurnoBus(req, res) {
   try {
-    const { trabajadorTurnoId1, trabajadorTurnoId2} = req.body;
+    const { trabajadorTurnoId1, trabajadorTurnoId2 } = req.body;
     asignacioBus1 = await prisma.assignmentBus.findFirst({
-      where: { trabajadorTurnoId: trabajadorTurnoId1 }    });
+      where: { trabajadorTurnoId: trabajadorTurnoId1 }
+    });
     asignacioBus2 = await prisma.assignmentBus.findFirst({
-      where: { trabajadorTurnoId: trabajadorTurnoId2 }    });
-    await prisma.assignmentBus.update({where: { id: asignacioBus1.id },
+      where: { trabajadorTurnoId: trabajadorTurnoId2 }
+    });
+    await prisma.assignmentBus.update({
+      where: { id: asignacioBus1.id },
       data: {
-        trabajadorTurnoId: trabajadorTurnoId2}})
-    await prisma.assignmentBus.update({where: { id: asignacioBus2.id },
+        trabajadorTurnoId: trabajadorTurnoId2
+      }
+    })
+    await prisma.assignmentBus.update({
+      where: { id: asignacioBus2.id },
       data: {
-        trabajadorTurnoId: trabajadorTurnoId1}})
+        trabajadorTurnoId: trabajadorTurnoId1
+      }
+    })
     res.status(204).send();
   } catch (error) {
     console.error("Error al intercambiar:", error);
@@ -1049,17 +1066,25 @@ async function intercambioAsignacionTurnoBus(req, res) {
 
 async function intercambioAsignacionTurnoPlane(req, res) {
   try {
-    const { trabajadorTurnoId1, trabajadorTurnoId2} = req.body;
+    const { trabajadorTurnoId1, trabajadorTurnoId2 } = req.body;
     asignacioBus1 = await prisma.assignmentPlane.findFirst({
-      where: { trabajadorTurnoId: trabajadorTurnoId1 }    });
+      where: { trabajadorTurnoId: trabajadorTurnoId1 }
+    });
     asignacioBus2 = await prisma.assignmentPlane.findFirst({
-      where: { trabajadorTurnoId: trabajadorTurnoId2 }    });
-    await prisma.assignmentPlane.update({where: { id: asignacioBus1.id },
+      where: { trabajadorTurnoId: trabajadorTurnoId2 }
+    });
+    await prisma.assignmentPlane.update({
+      where: { id: asignacioBus1.id },
       data: {
-        trabajadorTurnoId: trabajadorTurnoId2}})
-    await prisma.assignmentPlane.update({where: { id: asignacioBus2.id },
+        trabajadorTurnoId: trabajadorTurnoId2
+      }
+    })
+    await prisma.assignmentPlane.update({
+      where: { id: asignacioBus2.id },
       data: {
-        trabajadorTurnoId: trabajadorTurnoId1}})
+        trabajadorTurnoId: trabajadorTurnoId1
+      }
+    })
     res.status(204).send();
   } catch (error) {
     console.error("Error al intercambiar:", error);
@@ -1069,7 +1094,7 @@ async function intercambioAsignacionTurnoPlane(req, res) {
 
 async function eliminarCapacidadTurno(req, res) {
   try {
-    const {id} = req.body;
+    const { id } = req.body;
     await prisma.capacidadTurno.delete({ where: { id } });
     res.status(204).send();
   } catch (error) {
@@ -1091,7 +1116,7 @@ async function agregarAsignacionTurno(req, res) {
 
     res.status(201).json(restriccion);
   } catch (error) {
-        console.error("Error al crear asignacion:", error);
+    console.error("Error al crear asignacion:", error);
 
     res.status(500).json({ error: 'Error al crear asignacion' });
   }
@@ -1179,7 +1204,7 @@ async function importarTrabajadoresAlTurno(req, res) {
           data: {
             rut: t.rut,
             nombreCompleto: t.nombre,
-            telefono: getTelefono(t.telefono).trim()
+            telefono: getTelefono(t.telefono)
           },
         });
       }
@@ -1475,17 +1500,18 @@ const asignarAvionesATurno = async (req, res) => {
 
       // Convierte los minutos de la hora a una representación en minutos totales
       const minutosTotales = hh * 60 + mm;
-      
+
       // Verifica si la hora es antes de las 13:00, en ese caso, sumamos un día.
       const sumarDia = minutosTotales < 780;
 
       // Ajuste la fecha y hora, manteniendo UTC
       fechaBaseAjustada.setUTCHours(hh, mm, 0, 0);  // Establecer la hora en UTC
-      
+
       // Si la hora es antes de las 13:00, sumamos un día (solo para casos de cambio de día en la madrugada).
       if (sumarDia) {
         fechaBaseAjustada.setUTCDate(fechaBaseAjustada.getUTCDate() + 1);
       }
+
       return fechaBaseAjustada;
     };
 
@@ -1704,7 +1730,7 @@ async function optimizarTurno(req, res) {
       data: {
         modeloEjecutado: true
       }
-    });    
+    });
     res.status(200).json({ message: `Modelo ejecutado para turno ${id}` });
   } catch (error) {
     console.error('Error al ejecutar modelo:', error);
@@ -1876,7 +1902,7 @@ function calcularKPIs(turno, assignmentBuses, assignmentPlanes, busMap, planeMap
   const subida = turno.trabajadoresTurno.filter(t => t.subida);
   const bajada = turno.trabajadoresTurno.filter(t => !t.subida);
 
-  const totalBuses  = new Set(assignmentBuses.map(a => a.busTurnoId)).size;
+  const totalBuses = new Set(assignmentBuses.map(a => a.busTurnoId)).size;
   const totalVuelos = new Set(assignmentPlanes.map(a => a.planeTurnoId)).size;
 
   const ocupacionPorBus = turno.busTurno
@@ -1915,8 +1941,8 @@ function calcularKPIs(turno, assignmentBuses, assignmentPlanes, busMap, planeMap
     const vuelo = planeMap[t.id];
     if (!bus || !vuelo) return null;
     const inicio = new Date(t.subida ? bus.horario_salida : vuelo.horario_salida);
-    const fin    = new Date(t.subida ? vuelo.horario_llegada : bus.horario_llegada);
-    const horas  = (fin.getTime() - inicio.getTime()) / 36e5;
+    const fin = new Date(t.subida ? vuelo.horario_llegada : bus.horario_llegada);
+    const horas = (fin.getTime() - inicio.getTime()) / 36e5;
     return horas > 0 ? horas : null;
   }).filter(h => h !== null);
 
@@ -1972,14 +1998,14 @@ async function exportarAsignacionesExcel(req, res) {
       include: {
         trabajadoresTurno: { include: { trabajador: true } },
         planeTurno: { include: { plane: true } },
-        busTurno:  true,
+        busTurno: true,
       },
     });
 
     // Sanitize turno name for filename
     const safeTurnoName = turno.nombre ? turno.nombre.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
     const dateObj = new Date(turno.fecha);
-    const safeDate = !isNaN(dateObj) ? dateObj.toISOString().slice(0,10) : "fecha";
+    const safeDate = !isNaN(dateObj) ? dateObj.toISOString().slice(0, 10) : "fecha";
     nombreArchivo = `asignaciones_${safeTurnoName}_${safeDate}_excel`;
 
     const [assignmentBuses, assignmentPlanes] = await Promise.all([
@@ -1994,7 +2020,7 @@ async function exportarAsignacionesExcel(req, res) {
     ]);
 
     /* === 2. Mapas rápidos ============================================= */
-    const busMap   = Object.fromEntries(assignmentBuses .map(a => [a.trabajadorTurnoId, a.busTurno]));
+    const busMap = Object.fromEntries(assignmentBuses.map(a => [a.trabajadorTurnoId, a.busTurno]));
     const planeMap = Object.fromEntries(assignmentPlanes.map(a => [a.trabajadorTurnoId, a.planeTurno]));
 
     /* === 3. Workbook ================================================== */
@@ -2035,41 +2061,41 @@ async function exportarAsignacionesExcel(req, res) {
       // 🧭 Columnas según tipo
       ws.columns = subida
         ? [
-            { header: "Nombre",         key: "nombre",  width: 25 },
-            { header: "RUT",            key: "rut",     width: 15 },
-            { header: "Comuna salida",  key: "origen",  width: 20 },
-            { header: "Salida bus",     key: "sal_bus", width: 12 },
-            { header: "Llegada bus",    key: "leg_bus", width: 12 },
-            { header: "Aeropuerto",     key: "aerop",   width: 20 },
-            { header: "Salida vuelo",   key: "sal_vue", width: 12 },
-            { header: "Llegada vuelo",  key: "leg_vue", width: 12 },
-            { header: "Comuna destino", key: "destino", width: 20 },
-            { header: "T. total (h)",   key: "ttotal",  width: 12 },
-          ]
+          { header: "Nombre", key: "nombre", width: 25 },
+          { header: "RUT", key: "rut", width: 15 },
+          { header: "Comuna salida", key: "origen", width: 20 },
+          { header: "Salida bus", key: "sal_bus", width: 12 },
+          { header: "Llegada bus", key: "leg_bus", width: 12 },
+          { header: "Aeropuerto", key: "aerop", width: 20 },
+          { header: "Salida vuelo", key: "sal_vue", width: 12 },
+          { header: "Llegada vuelo", key: "leg_vue", width: 12 },
+          { header: "Comuna destino", key: "destino", width: 20 },
+          { header: "T. total (h)", key: "ttotal", width: 12 },
+        ]
         : [
-            { header: "Nombre",         key: "nombre",  width: 25 },
-            { header: "RUT",            key: "rut",     width: 15 },
-            { header: "Comuna salida",  key: "origen",  width: 20 },
-            { header: "Salida vuelo",   key: "sal_vue", width: 12 },
-            { header: "Llegada vuelo",  key: "leg_vue", width: 12 },
-            { header: "Aeropuerto",     key: "aerop",   width: 20 },
-            { header: "Salida bus",     key: "sal_bus", width: 12 },
-            { header: "Llegada bus",    key: "leg_bus", width: 12 },
-            { header: "Comuna destino", key: "destino", width: 20 },
-            { header: "T. total (h)",   key: "ttotal",  width: 12 },
-          ];
+          { header: "Nombre", key: "nombre", width: 25 },
+          { header: "RUT", key: "rut", width: 15 },
+          { header: "Comuna salida", key: "origen", width: 20 },
+          { header: "Salida vuelo", key: "sal_vue", width: 12 },
+          { header: "Llegada vuelo", key: "leg_vue", width: 12 },
+          { header: "Aeropuerto", key: "aerop", width: 20 },
+          { header: "Salida bus", key: "sal_bus", width: 12 },
+          { header: "Llegada bus", key: "leg_bus", width: 12 },
+          { header: "Comuna destino", key: "destino", width: 20 },
+          { header: "T. total (h)", key: "ttotal", width: 12 },
+        ];
 
       trabajadores.forEach(tt => {
-        const bus   = busMap[tt.id];
+        const bus = busMap[tt.id];
         const vuelo = planeMap[tt.id];
         let origen = "";
         let destino = "";
 
         if (bus && bus.comunas_origen && bus.comunas_destino) {
           try {
-            const comunasOrigen  = JSON.parse(bus.comunas_origen);
+            const comunasOrigen = JSON.parse(bus.comunas_origen);
             const comunasDestino = JSON.parse(bus.comunas_destino);
-            origen  = Array.isArray(comunasOrigen)  ? comunasOrigen.join(", ")  : comunasOrigen;
+            origen = Array.isArray(comunasOrigen) ? comunasOrigen.join(", ") : comunasOrigen;
             destino = Array.isArray(comunasDestino) ? comunasDestino.join(", ") : comunasDestino;
           } catch {
             origen = bus.comunas_origen;
@@ -2079,11 +2105,11 @@ async function exportarAsignacionesExcel(req, res) {
           origen = "";
           destino = "";
         }
-        
-        const origen_bus     = tt.acercamiento ?? tt.origen;
-        const destino_bus    = subida ? tt.origen : tt.acercamiento;
-        const origen_vuelo   = vuelo?.plane?.ciudad_origen ?? "";
-        const destino_vuelo  = vuelo?.plane?.ciudad_destino ?? "";
+
+        const origen_bus = tt.acercamiento ?? tt.origen;
+        const destino_bus = subida ? tt.origen : tt.acercamiento;
+        const origen_vuelo = vuelo?.plane?.ciudad_origen ?? "";
+        const destino_vuelo = vuelo?.plane?.ciudad_destino ?? "";
 
         let tTotalHr = "";
         if (bus && vuelo) {
@@ -2095,29 +2121,29 @@ async function exportarAsignacionesExcel(req, res) {
         // 🔀 Datos según tipo
         const row = subida
           ? {
-              nombre:  tt.trabajador.nombreCompleto,
-              rut:     tt.trabajador.rut,
-              origen:  origen_bus,
-              sal_bus: bus   ? getHora(bus.horario_salida) : "",
-              leg_bus: bus   ? getHora(bus.horario_llegada) : "",
-              aerop:   origen_vuelo,
-              sal_vue: vuelo ? getHora(vuelo.horario_salida) : "",
-              leg_vue: vuelo ? getHora(vuelo.horario_llegada) : "",
-              destino: destino_vuelo,
-              ttotal:  tTotalHr,
-            }
+            nombre: tt.trabajador.nombreCompleto,
+            rut: tt.trabajador.rut,
+            origen: origen_bus,
+            sal_bus: bus ? getHora(bus.horario_salida) : "",
+            leg_bus: bus ? getHora(bus.horario_llegada) : "",
+            aerop: origen_vuelo,
+            sal_vue: vuelo ? getHora(vuelo.horario_salida) : "",
+            leg_vue: vuelo ? getHora(vuelo.horario_llegada) : "",
+            destino: destino_vuelo,
+            ttotal: tTotalHr,
+          }
           : {
-              nombre:  tt.trabajador.nombreCompleto,
-              rut:     tt.trabajador.rut,
-              origen:  origen_vuelo,
-              aerop:   destino_vuelo,
-              sal_vue: vuelo ? getHora(vuelo.horario_salida) : "",
-              leg_vue: vuelo ? getHora(vuelo.horario_llegada) : "",
-              sal_bus: bus   ? getHora(bus.horario_salida) : "",
-              leg_bus: bus   ? getHora(bus.horario_llegada) : "",
-              destino: destino_bus,
-              ttotal:  tTotalHr,
-            };
+            nombre: tt.trabajador.nombreCompleto,
+            rut: tt.trabajador.rut,
+            origen: origen_vuelo,
+            aerop: destino_vuelo,
+            sal_vue: vuelo ? getHora(vuelo.horario_salida) : "",
+            leg_vue: vuelo ? getHora(vuelo.horario_llegada) : "",
+            sal_bus: bus ? getHora(bus.horario_salida) : "",
+            leg_bus: bus ? getHora(bus.horario_llegada) : "",
+            destino: destino_bus,
+            ttotal: tTotalHr,
+          };
 
         ws.addRow(row);
       });
@@ -2129,10 +2155,10 @@ async function exportarAsignacionesExcel(req, res) {
     /******** Hoja itinerarios buses ************************************/
     const wsBuses = wb.addWorksheet("Itinerarios buses");
     wsBuses.columns = [
-      { header: "Bus ID",     key: "id",   width: 20 },
-      { header: "Capacidad",  key: "cap",  width: 12 },
-      { header: "Ocupación",  key: "occ",  width: 12 },
-      { header: "Ruta",       key: "ruta", width: 50 },
+      { header: "Bus ID", key: "id", width: 20 },
+      { header: "Capacidad", key: "cap", width: 12 },
+      { header: "Ocupación", key: "occ", width: 12 },
+      { header: "Ruta", key: "ruta", width: 50 },
     ];
 
     turno.busTurno.forEach(b => {
@@ -2143,9 +2169,9 @@ async function exportarAsignacionesExcel(req, res) {
 
       if (b.comunas_origen && b.comunas_destino) {
         try {
-          const comunasOrigen  = JSON.parse(b.comunas_origen);
+          const comunasOrigen = JSON.parse(b.comunas_origen);
           const comunasDestino = JSON.parse(b.comunas_destino);
-          origen  = Array.isArray(comunasOrigen)  ? comunasOrigen.join(", ")  : comunasOrigen;
+          origen = Array.isArray(comunasOrigen) ? comunasOrigen.join(", ") : comunasOrigen;
           destino = Array.isArray(comunasDestino) ? comunasDestino.join(", ") : comunasDestino;
         } catch {
           origen = b.comunas_origen;
@@ -2157,7 +2183,7 @@ async function exportarAsignacionesExcel(req, res) {
       }
 
       wsBuses.addRow({
-        id:  b.id,
+        id: b.id,
         cap: b.capacidad,
         occ,
         ruta: `${origen} ➔ ${destino} (${getHora(b.horario_salida)}-${getHora(b.horario_llegada)})`,
@@ -2170,17 +2196,17 @@ async function exportarAsignacionesExcel(req, res) {
     /******** Hoja itinerarios vuelos ***********************************/
     const wsVuelos = wb.addWorksheet("Itinerarios vuelos");
     wsVuelos.columns = [
-      { header: "Vuelo ID",   key: "id",   width: 20 },
-      { header: "Capacidad",  key: "cap",  width: 12 },
-      { header: "Ocupación",  key: "occ",  width: 12 },
-      { header: "Ruta",       key: "ruta", width: 50 },
+      { header: "Vuelo ID", key: "id", width: 20 },
+      { header: "Capacidad", key: "cap", width: 12 },
+      { header: "Ocupación", key: "occ", width: 12 },
+      { header: "Ruta", key: "ruta", width: 50 },
     ];
 
     turno.planeTurno.forEach(p => {
       const occ = assignmentPlanes.filter(a => a.planeTurnoId === p.id).length;
       if (occ == 0) return; // solo vuelos usados
       wsVuelos.addRow({
-        id:  p.id,
+        id: p.id,
         cap: p.capacidad, // ← esto es la capacidad en PlaneTurno (no Plane)
         occ,
         ruta: `${p.plane?.ciudad_origen} ➔ ${p.plane?.ciudad_destino} (${getHora(p.horario_salida)}-${getHora(p.horario_llegada)})`,
@@ -2214,14 +2240,14 @@ async function exportarAsignacionesPdf(req, res) {
       include: {
         trabajadoresTurno: { include: { trabajador: true } },
         planeTurno: { include: { plane: true } },
-        busTurno:  true,
+        busTurno: true,
       },
     });
 
     // Sanitize turno name for filename
     const safeTurnoName = turno.nombre ? turno.nombre.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
     const dateObj = new Date(turno.fecha);
-    const safeDate = !isNaN(dateObj) ? dateObj.toISOString().slice(0,10) : "fecha";
+    const safeDate = !isNaN(dateObj) ? dateObj.toISOString().slice(0, 10) : "fecha";
     const nombreArchivo = `asignaciones_${safeTurnoName}_${safeDate}_pdf`;
 
     const [assignmentBuses, assignmentPlanes] = await Promise.all([
@@ -2235,7 +2261,7 @@ async function exportarAsignacionesPdf(req, res) {
       }),
     ]);
 
-    const busMap   = Object.fromEntries(assignmentBuses.map(a => [a.trabajadorTurnoId, a.busTurno]));
+    const busMap = Object.fromEntries(assignmentBuses.map(a => [a.trabajadorTurnoId, a.busTurno]));
     const planeMap = Object.fromEntries(assignmentPlanes.map(a => [a.trabajadorTurnoId, a.planeTurno]));
 
     const kpis = calcularKPIs(turno, assignmentBuses, assignmentPlanes, busMap, planeMap);
@@ -2243,8 +2269,8 @@ async function exportarAsignacionesPdf(req, res) {
     // Agrupar por región y tipo
     const porRegionYTipo = turno.trabajadoresTurno.reduce((acc, t) => {
       const region = t.region || 'Sin Región';
-      const tipo   = t.subida ? 'Subida' : 'Bajada';
-      const key    = `${region} – ${tipo}`;
+      const tipo = t.subida ? 'Subida' : 'Bajada';
+      const key = `${region} – ${tipo}`;
       (acc[key] = acc[key] || []).push(t);
       return acc;
     }, {});
@@ -2278,7 +2304,7 @@ async function exportarAsignacionesPdf(req, res) {
             widths: ['*', 100],
             body: [
               [{ text: 'Indicador', style: 'tableHeader' }, { text: 'Valor', style: 'tableHeader' }],
-              ...kpis.map(([label, valor]) => [ label, valor ])
+              ...kpis.map(([label, valor]) => [label, valor])
             ]
           },
           style: 'tableBody',
@@ -2290,17 +2316,17 @@ async function exportarAsignacionesPdf(req, res) {
         ...Object.entries(porRegionYTipo).flatMap(([regionTipo, trabajadores]) => {
           // construyes un bloque para cada sección
           const header = [
-            'Nombre','RUT',
+            'Nombre', 'RUT',
             ...(regionTipo.endsWith('Subida')
-              ? ['Origen Bus','Salida Bus','Llegada Bus','Aeropuerto','Salida Vuelo','Llegada Vuelo','Destino','T. total (h)']
-              : ['Origen','Salida Vuelo','Llegada Vuelo','Aeropuerto','Salida Bus','Llegada Bus','Destino Bus','T. total (h)']
+              ? ['Origen Bus', 'Salida Bus', 'Llegada Bus', 'Aeropuerto', 'Salida Vuelo', 'Llegada Vuelo', 'Destino', 'T. total (h)']
+              : ['Origen', 'Salida Vuelo', 'Llegada Vuelo', 'Aeropuerto', 'Salida Bus', 'Llegada Bus', 'Destino Bus', 'T. total (h)']
             )
           ];
 
           const rows = trabajadores.map(tt => {
-            const bus   = busMap[tt.id];
+            const bus = busMap[tt.id];
             const vuelo = planeMap[tt.id];
-            const getHora = dt => dt ? new Date(dt).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}) : '';
+            const getHora = dt => dt ? new Date(dt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : '';
             const tTotal = bus && vuelo
               ? (((vuelo.horario_llegada - (tt.subida ? bus.horario_salida : vuelo.horario_salida)) / 36e5).toFixed(1))
               : '';
@@ -2342,7 +2368,7 @@ async function exportarAsignacionesPdf(req, res) {
               table: {
                 headerRows: 1,
                 widths,
-                body: [ header, ...rows ]
+                body: [header, ...rows]
               },
               style: 'tableBody',
               layout: 'lightHorizontalLines',
@@ -2362,7 +2388,7 @@ async function exportarAsignacionesPdf(req, res) {
               ...turno.busTurno.map(b => {
                 const occ = assignmentBuses.filter(a => a.busTurnoId === b.id).length;
                 const ruta = `${new Date(b.horario_salida).toLocaleTimeString('es-CL')} - ${new Date(b.horario_llegada).toLocaleTimeString('es-CL')}`;
-                return [ b.id, `${b.capacidad} (uso: ${occ})`, ruta ];
+                return [b.id, `${b.capacidad} (uso: ${occ})`, ruta];
               })
             ]
           },
@@ -2372,7 +2398,7 @@ async function exportarAsignacionesPdf(req, res) {
         },
 
         // === Itinerarios Vuelos ===
-        { text: '4. Itinerarios de Vuelos', style: 'subheader', margin: [0,0,0,4] },
+        { text: '4. Itinerarios de Vuelos', style: 'subheader', margin: [0, 0, 0, 4] },
         {
           table: {
             headerRows: 1,
@@ -2382,7 +2408,7 @@ async function exportarAsignacionesPdf(req, res) {
               ...turno.planeTurno.map(p => {
                 const occ = assignmentPlanes.filter(a => a.planeTurnoId === p.id).length;
                 const ruta = `${new Date(p.horario_salida).toLocaleTimeString('es-CL')} - ${new Date(p.horario_llegada).toLocaleTimeString('es-CL')}`;
-                return [ p.id, `${p.capacidad} (uso: ${occ})`, ruta ];
+                return [p.id, `${p.capacidad} (uso: ${occ})`, ruta];
               })
             ]
           },
@@ -2391,12 +2417,12 @@ async function exportarAsignacionesPdf(req, res) {
         }
       ],
       styles: {
-        header:        { fontSize: 20, bold: true, alignment: 'center', margin: [0,0,0,10] },
-        subheader:     { fontSize: 14, bold: true, margin: [0,10,0,4] },
-        tableHeader:   { bold: true, fillColor: '#eeeeee' },
-        tableSubheader:{ margin: [0,4,0,2] },
-        smallText:     { fontSize: 8, color: '#666666' },
-        tableBody:     { fontSize: 8 }
+        header: { fontSize: 20, bold: true, alignment: 'center', margin: [0, 0, 0, 10] },
+        subheader: { fontSize: 14, bold: true, margin: [0, 10, 0, 4] },
+        tableHeader: { bold: true, fillColor: '#eeeeee' },
+        tableSubheader: { margin: [0, 4, 0, 2] },
+        smallText: { fontSize: 8, color: '#666666' },
+        tableBody: { fontSize: 8 }
       },
       defaultStyle: {
         font: 'Helvetica',
