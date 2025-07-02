@@ -572,9 +572,9 @@ async function obtenerCapacidadTurno(req, res) {
 
 async function enviarNotificaciones(req, res) {
   try {
-    const { id } = req.params;
+    const { turnoId } = req.params;
     const asignaciones = await prisma.trabajadorTurno.findMany({
-      where: { turnoId: id },
+      where: { turnoId: turnoId },
       include: {
         assignmentBuses: {
           include: { busTurno: true }
@@ -584,8 +584,8 @@ async function enviarNotificaciones(req, res) {
         }
       }
     });
-
-
+    console.log("Turno ID:", turnoId);
+    console.log("Asignaciones encontradas:", asignaciones.length);
     for (let i = 0; i < asignaciones.length; i++) {
       var trabajador = await prisma.trabajador.findFirst({
         where: { id: asignaciones[i].trabajadorId },
@@ -593,7 +593,7 @@ async function enviarNotificaciones(req, res) {
       if (trabajador.telefono === null || trabajador.telefono === undefined) {
         continue
       }
-      var numero = "whatsapp:" + trabajador.telefono;
+      var numero = trabajador.telefono;
       const asignacion = asignaciones[i];
       if (!asignacion) continue;
 
