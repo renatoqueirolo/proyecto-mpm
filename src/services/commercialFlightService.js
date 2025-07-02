@@ -93,113 +93,108 @@ function normalizeFlights(rawArray) {
  * - Si no, llama al scraper, borra los vuelos viejos de esa ruta+fecha,
  *   los inserta con createdAt=now() y devuelve el conjunto recién insertado.
  */
+let scrapingInProgress = false;  // Variable de bloqueo
+
 async function getFlights(origen, destino, fecha, turnoId) {
-  // 1. Calculamos “hace 12 horas”
-  const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
+  if (scrapingInProgress) {
+    throw new Error("Scraping ya en progreso.");
+  }
 
-  // 2. ¿Hay datos recientes?
-  const countRecent = await prisma.commercialPlane.count({
-    where: {
-      origin: origen,
-      destination: destino,
-      departureDate: new Date(fecha),
-      createdAt: { gte: twelveHoursAgo },
-    },
-  });
+  scrapingInProgress = true;  // Bloqueamos el scraping
 
-  if (countRecent > 0) {
-    // 2a. Devolvemos cache
-    const cached = await prisma.commercialPlane.findMany({
+  try {
+    // 1. Eliminamos la lógica de "12 horas"
+    // const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
+
+    // 2. Eliminar la verificación de vuelos recientes
+    // const countRecent = await prisma.commercialPlane.count({
+    //   where: {
+    //     origin: origen,
+    //     destination: destino,
+    //     departureDate: new Date(fecha),
+    //     createdAt: { gte: twelveHoursAgo },  // Esta lógica se elimina
+    //   },
+    // });
+
+    // 3. Siempre se hace scraping y no se consulta la base de datos
+    const rawAll = await callPythonScraper(origen, destino, fecha);
+    const allFlights = normalizeFlights(rawAll);
+
+    // 4. Insertamos los vuelos recién obtenidos en la base de datos
+    for (const f of allFlights) {
+      await prisma.commercialPlane.upsert({
+        where: {
+          airline_flightCode_departureDate: {
+            airline: f.airline,
+            flightCode: f.flightCode,
+            departureDate: f.departureDate,
+          },
+        },
+        update: {
+          departureTime: f.departureTime,
+          arrivalTime: f.arrivalTime,
+          durationMinutes: f.durationMinutes,
+          priceClp: f.priceClp,
+          direct: f.direct,
+          stops: f.stops,
+          stopsDetail: f.stopsDetail,
+          seatsAvailable: f.seatsAvailable,
+          createdAt: new Date(),
+          turnoId,
+        },
+        create: {
+          airline: f.airline,
+          flightCode: f.flightCode,
+          origin: f.origin,
+          destination: f.destination,
+          departureDate: f.departureDate,
+          departureTime: f.departureTime,
+          arrivalTime: f.arrivalTime,
+          durationMinutes: f.durationMinutes,
+          priceClp: f.priceClp,
+          direct: f.direct,
+          stops: f.stops,
+          stopsDetail: f.stopsDetail,
+          seatsAvailable: f.seatsAvailable,
+          turno: { connect: { id: turnoId } },
+        },
+      });
+    }
+
+    // 5. Devolvemos los vuelos frescos (sin importar la antigüedad)
+    const justInserted = await prisma.commercialPlane.findMany({
       where: {
         origin: origen,
         destination: destino,
         departureDate: new Date(fecha),
+        turnoId,
       },
       orderBy: { departureTime: "asc" },
     });
 
-    return cached.map((f) => ({
-      ...f,
+    return justInserted.map((f) => ({
+      airline: f.airline,
+      flightCode: f.flightCode,
+      origin: f.origin,
+      destination: f.destination,
+      departureDate: f.departureDate,
+      departureTime: f.departureTime,
+      arrivalTime: f.arrivalTime,
+      durationMinutes: f.durationMinutes,
       priceClp: f.priceClp,
-      // (no necesitamos incluir turno aquí, ya viene en el registro)
+      direct: f.direct,
+      stops: f.stops,
+      stopsDetail: f.stopsDetail,
+      seatsAvailable: f.seatsAvailable,
     }));
+  } catch (err) {
+    console.error("Error en scraping o base de datos:", err);
+    throw new Error("Error al obtener los vuelos.");
+  } finally {
+    scrapingInProgress = false;  // Liberamos el bloqueo
   }
-
-  // 2b. Scrape + normalize
-  const rawAll = await callPythonScraper(origen, destino, fecha);
-  const allFlights = normalizeFlights(rawAll);
-
-  // 3. Upsert cada vuelo, conectándolo al turno
-  for (const f of allFlights) {
-    await prisma.commercialPlane.upsert({
-      where: {
-        airline_flightCode_departureDate: {
-          airline:       f.airline,
-          flightCode:    f.flightCode,
-          departureDate: f.departureDate,
-        },
-      },
-      update: {
-        departureTime:   f.departureTime,
-        arrivalTime:     f.arrivalTime,
-        durationMinutes: f.durationMinutes,
-        priceClp:        f.priceClp,
-        direct:          f.direct,
-        stops:           f.stops,
-        stopsDetail:     f.stopsDetail,
-        seatsAvailable:  f.seatsAvailable,
-        createdAt:       new Date(),
-        // ► nos aseguramos de mantener la relación
-        turnoId,
-      },
-      create: {
-        airline:         f.airline,
-        flightCode:      f.flightCode,
-        origin:          f.origin,
-        destination:     f.destination,
-        departureDate:   f.departureDate,
-        departureTime:   f.departureTime,
-        arrivalTime:     f.arrivalTime,
-        durationMinutes: f.durationMinutes,
-        priceClp:        f.priceClp,
-        direct:          f.direct,
-        stops:           f.stops,
-        stopsDetail:     f.stopsDetail,
-        seatsAvailable:  f.seatsAvailable,
-        // ► conectamos al turno
-        turno: { connect: { id: turnoId } },
-      },
-    });
-  }
-
-  // 4. Devolvemos los vuelos frescos
-  const justInserted = await prisma.commercialPlane.findMany({
-    where: {
-      origin: origen,
-      destination: destino,
-      departureDate: new Date(fecha),
-      createdAt: { gte: twelveHoursAgo },
-      turnoId,  // opcional: filtrar sólo los de este turno
-    },
-    orderBy: { departureTime: "asc" },
-  });
-
-  return justInserted.map((f) => ({
-    airline:        f.airline,
-    flightCode:     f.flightCode,
-    origin:         f.origin,
-    destination:    f.destination,
-    departureDate:  f.departureDate,
-    departureTime:  f.departureTime,
-    arrivalTime:    f.arrivalTime,
-    durationMinutes:f.durationMinutes,
-    priceClp:       f.priceClp,
-    direct:         f.direct,
-    stops:          f.stops,
-    stopsDetail:    f.stopsDetail,
-    seatsAvailable: f.seatsAvailable,
-  }));
 }
+
 
 
 module.exports = {

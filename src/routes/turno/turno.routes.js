@@ -46,6 +46,7 @@ const {
   obtenerCapacidadAvionesTurno,
   obtenerCapacidadUsadaPorCombinacion,
   getCommercialPlanes,
+  deleteCommercialPlanesByTurno,
   agregarAsignacionTurnoCommercialPlane,
   obtenerAsignacionTurnoCommercialPlane,
   eliminarAsignacionTurnoCommercialPlane,
@@ -192,6 +193,8 @@ router.post('/:turnoId/plane-turnos', crearPlaneTurno);
 router.get('/plane-turnos/:id', obtenerPlaneTurno);
 router.get('/:turnoId/commercialPlanes', getCommercialPlanes);
 router.post('/:turnoId/notificaciones', enviarNotificaciones);
+router.delete('/:turnoId/commercialPlanes', deleteCommercialPlanesByTurno);
+
 
 
 

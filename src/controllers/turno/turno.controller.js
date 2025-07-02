@@ -55,7 +55,7 @@ async function crearTurno(req, res) {
       const insertsCapacidad = [];
 
       for (const region of regiones) {
-        const capacidades = capacidades_por_region[region.name] || [30];
+        const capacidades = capacidades_por_region[region.name] || [20];
         for (const capacidad of capacidades) {
           const existe = await tx.capacidadTurno.findFirst({
             where: {
@@ -153,6 +153,40 @@ const getCommercialPlanes = async (req, res) => {
     });
   }
 };
+
+const deleteCommercialPlanesByTurno = async (req, res) => {
+  try {
+    const { turnoId } = req.params;
+
+    // Verificar si el turno existe
+    const turno = await prisma.turno.findUnique({
+      where: { id: turnoId },
+      select: { id: true }
+    });
+
+    if (!turno) {
+      return res.status(404).json({ error: 'Turno no encontrado.' });
+    }
+
+    // Eliminar todos los CommercialPlanes asociados al turno
+    await prisma.commercialPlane.deleteMany({
+      where: { turnoId }
+    });
+
+    return res.json({ message: 'Todos los CommercialPlanes han sido eliminados correctamente.' });
+  } catch (err) {
+    console.error('Error al eliminar CommercialPlanes:', err);
+    return res.status(500).json({
+      error: 'Error interno del servidor al eliminar los vuelos comerciales para el turno.'
+    });
+  }
+};
+
+module.exports = {
+  // otras funciones del controlador...
+  deleteCommercialPlanesByTurno
+};
+
 
 // Obtener todos los turnos
 async function obtenerTurnos(req, res) {
@@ -1435,14 +1469,27 @@ const asignarAvionesATurno = async (req, res) => {
 
     // Función para combinar fecha del turno y hora tipo "18:30"
     const construirFechaHora = (fechaBase, horaStr) => {
-      const [hh, mm] = horaStr.split(":").map(Number);
-      const minutosTotales = hh * 60 + mm;
-      const sumarDia = minutosTotales < 780; // antes de las 13:00
+      // Convierte la fecha base a UTC
       const fechaBaseAjustada = new Date(fechaBase);
-      if (sumarDia) fechaBaseAjustada.setDate(fechaBaseAjustada.getDate() + 1);
-      fechaBaseAjustada.setHours(hh+20, mm, 0, 0);
+      const [hh, mm] = horaStr.split(":").map(Number);
+
+      // Convierte los minutos de la hora a una representación en minutos totales
+      const minutosTotales = hh * 60 + mm;
+
+      // Verifica si la hora es antes de las 13:00, en ese caso, sumamos un día.
+      const sumarDia = minutosTotales < 780;
+
+      // Ajuste la fecha y hora, manteniendo UTC
+      fechaBaseAjustada.setUTCHours(hh, mm, 0, 0);  // Establecer la hora en UTC
+      
+      // Si la hora es antes de las 13:00, sumamos un día (solo para casos de cambio de día en la madrugada).
+      if (sumarDia) {
+        fechaBaseAjustada.setUTCDate(fechaBaseAjustada.getUTCDate() + 1);
+      }
+
       return fechaBaseAjustada;
     };
+
 
     const inserts = nuevosAviones.map(avion => {
       const plane = mapaPlanes.get(avion.planeId);
@@ -2406,10 +2453,9 @@ async function actualizarParametrosModeloTurno(req, res) {
       espera_conexion_subida,
       espera_conexion_bajada,
       tiempo_promedio_espera,
+      costo_vuelos_comerciales,
       max_tiempo_ejecucion,
       tiempo_adicional_parada,
-      min_hora,
-      max_hora,
     } = req.body;
 
     // Verifica existencia del turno
@@ -2434,10 +2480,9 @@ async function actualizarParametrosModeloTurno(req, res) {
         espera_conexion_subida,
         espera_conexion_bajada,
         tiempo_promedio_espera,
+        costo_vuelos_comerciales,
         max_tiempo_ejecucion,
         tiempo_adicional_parada,
-        min_hora,
-        max_hora,
       },
     });
 
@@ -2615,6 +2660,7 @@ module.exports = {
   obtenerCapacidadAvionesTurno,
   obtenerCapacidadUsadaPorCombinacion,
   getCommercialPlanes,
+  deleteCommercialPlanesByTurno,
   agregarAsignacionTurnoCommercialPlane,
   eliminarAsignacionTurnoCommercialPlane,
   obtenerAsignacionTurnoCommercialPlane,
