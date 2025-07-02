@@ -18,7 +18,7 @@ const importarPlanes = async () => {
       const [
         id,
         capacidad,
-        subida, // Ignorar, pero lo dejo si lo necesitas luego
+        subida, // Ignorar
         horario_salida,
         horario_llegada,
         ciudad_origen,
@@ -34,6 +34,7 @@ const importarPlanes = async () => {
         horario_llegada: String(horario_llegada).trim(),
         ciudad_origen: String(ciudad_origen).trim(),
         ciudad_destino: String(ciudad_destino).trim(),
+        generico: true
       });
     });
 

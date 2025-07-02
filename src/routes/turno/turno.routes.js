@@ -36,7 +36,21 @@ const {
   obtenerCompatiblesTurnoPlane,
   intercambioAsignacionTurnoBus,
   intercambioAsignacionTurnoPlane,
-  agregarTrabajadorATurno
+  agregarTrabajadorATurno,
+  eliminarTrabajadorTurno,
+  editarTrabajadorTurno,
+  editarPlaneTurno,
+  eliminarPlaneTurno,
+  crearPlaneTurno,
+  obtenerPlaneTurno,
+  obtenerCapacidadAvionesTurno,
+  obtenerCapacidadUsadaPorCombinacion,
+  getCommercialPlanes,
+  deleteCommercialPlanesByTurno,
+  agregarAsignacionTurnoCommercialPlane,
+  obtenerAsignacionTurnoCommercialPlane,
+  eliminarAsignacionTurnoCommercialPlane,
+  enviarNotificaciones
 } = require('../../controllers/turno/turno.controller');
 
 router.use(userMustBeLogged)
@@ -132,6 +146,8 @@ router.put('/:id', editarTurno);
  *         description: Eliminado exitosamente
  */
 router.delete('/:id', eliminarTurno);
+router.get('/:id/capacidad-aviones', obtenerCapacidadAvionesTurno);
+router.get("/:id/capacidad-aviones-usada", obtenerCapacidadUsadaPorCombinacion);
 
 /**
  * @swagger
@@ -169,6 +185,17 @@ router.delete('/:id', eliminarTurno);
  */
 router.post('/:id/trabajadores', importarTrabajadoresAlTurno);
 router.post("/:id/trabajador", agregarTrabajadorATurno);
+router.delete('/trabajador-turno/:id', eliminarTrabajadorTurno);
+router.put('/trabajador-turno/:id', editarTrabajadorTurno);
+router.put('/plane-turnos/:id', editarPlaneTurno);
+router.delete('/plane-turnos/:id', eliminarPlaneTurno);
+router.post('/:turnoId/plane-turnos', crearPlaneTurno);
+router.get('/plane-turnos/:id', obtenerPlaneTurno);
+router.get('/:turnoId/commercialPlanes', getCommercialPlanes);
+router.post('/:turnoId/notificaciones', enviarNotificaciones);
+router.delete('/:turnoId/commercialPlanes', deleteCommercialPlanesByTurno);
+
+
 
 
 /**
@@ -369,6 +396,12 @@ router.get('/:id/asignaciones/bus/:busTurnoId', obtenerAsignacionTurnoBus);
 
 router.get('/:id/asignaciones/vuelo/:planeTurnoId', obtenerAsignacionTurnoPlane);
 
+// asignaciones commercialplane
+router.get('/:turnoId/commercialPlanes/:commercialPlaneId/assignments',obtenerAsignacionTurnoCommercialPlane);
+router.post('/:turnoId/commercialPlanes/:commercialPlaneId/assignments',agregarAsignacionTurnoCommercialPlane);
+router.delete('/:turnoId/commercialPlanes/:commercialPlaneId/assignments/:trabajadorTurnoId',eliminarAsignacionTurnoCommercialPlane);
+
+//Intercambio
 router.get('/:id/asignaciones/bus/compatibles/:trabajadorTurnoId', obtenerCompatiblesTurnoBus);
 
 router.get('/:id/asignaciones/vuelo/compatibles/:trabajadorTurnoId', obtenerCompatiblesTurnoPlane);
@@ -376,6 +409,10 @@ router.get('/:id/asignaciones/vuelo/compatibles/:trabajadorTurnoId', obtenerComp
 router.put('/:id/asignaciones/bus/intercambio', intercambioAsignacionTurnoBus);
 
 router.put('/:id/asignaciones/vuelo/intercambio', intercambioAsignacionTurnoPlane);
+
+
+
+
 
 /**
  * @swagger

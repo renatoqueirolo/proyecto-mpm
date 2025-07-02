@@ -87,6 +87,9 @@ const importarDesdeExcel = async (req, res) => {
   }
 };
 
+
+
+
 module.exports = {
   getPlanes,
   createPlane,
@@ -94,4 +97,5 @@ module.exports = {
   deletePlane,
   deleteAllPlanes,
   importarDesdeExcel,
+  importarPlanes
 };

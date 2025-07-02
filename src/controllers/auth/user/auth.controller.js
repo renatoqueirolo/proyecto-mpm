@@ -28,6 +28,7 @@ const login = async (req, res) => {
       role: user.role,
       updatedAt: user.updatedAt,
       createdAt: user.createdAt,
+      proyectos: user.proyectos
     };
 
     const token = jwt.sign({ user: payloadSanitizedUser }, JWT_SECRET, { expiresIn: "12h" });

@@ -56,8 +56,25 @@ async function getDashboardPlanes(req, res) {
   }
 }
 
+async function editCommercialPlaneAssignment(req, res) {
+  const { id } = req.params;
+  const { estado } = req.body;
+
+  try {
+    const updatedAssignment = await prisma.assignmentCommercialPlane.update({
+      where: { id },
+      data: { estado },
+    });
+    res.json(updatedAssignment);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al actualizar la asignación de vuelo comercial' });
+  }
+}
+
 module.exports = {
   getDashboardWorkers,
   getDashboardBuses,
   getDashboardPlanes,
+  editCommercialPlaneAssignment
 };

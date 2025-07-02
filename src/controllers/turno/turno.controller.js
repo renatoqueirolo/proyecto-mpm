@@ -1,11 +1,11 @@
 const ExcelJS = require('exceljs');
 const { execFile } = require('child_process');
 const path = require('path');
-const PdfPrinter = require('pdfmake');;
-
+const PdfPrinter = require('pdfmake');
+const { getFlights } = require('../../services/commercialFlightService');
 const { PrismaClient, ShiftType } = require('@prisma/client');
 const prisma = new PrismaClient();
-
+const {enviarMensaje} = require('../chatbot/whatsapp.controller');
 // Crear turno
 async function crearTurno(req, res) {
   try {
@@ -13,64 +13,74 @@ async function crearTurno(req, res) {
     if (!fecha || !creadoPorId || !proyecto || !tipoTurno)
       return res.status(400).json({ error: 'Faltan campos requeridos' });
 
-    let tipoTurnoType;
-    if (tipoTurno == "14x14") tipoTurnoType = ShiftType.FOURTEEN_FOURTEEN
-    else if (tipoTurno == "7x7") tipoTurnoType = ShiftType.SEVEN_SEVEN
+    const projectObj = await prisma.project.findUnique({
+      where: { name: proyecto }
+    });
+
+    const shiftTypeObj = await prisma.shiftType.findUnique({
+      where: { name: tipoTurno }
+    });
+
+    if (!projectObj || !shiftTypeObj) {
+      return res.status(400).json({
+        error: 'Proyecto o tipo de turno no encontrado',
+        details: !projectObj ? 'Proyecto inválido' : 'Tipo de turno inválido'
+      });
+    }
 
     const creadoPorIdString = creadoPorId.toString();
 
     const capacidades_por_region = {
       V: [12, 20, 10],
-      IV: [16, 8],
-      RM: [20, 30],
+      RM: [30],
     };
 
-    // Ejecutar todo en una transacción
     const resultado = await prisma.$transaction(async (tx) => {
       const turno = await tx.turno.create({
         data: {
-          nombre: nombre,
+          nombre,
           fecha: new Date(fecha),
           creadoPorId: creadoPorIdString,
-          proyecto: proyecto,
-          tipoTurno: tipoTurnoType,
+          proyectoId: projectObj.id,
+          tipoTurnoId: shiftTypeObj.id,
           modeloEjecutado: false,
         },
       });
 
       await tx.parametrosModeloTurno.create({
-        data: {
-          turnoId: turno.id,
-        },
+        data: { turnoId: turno.id },
       });
 
+      const regiones = await tx.region.findMany();
       const insertsCapacidad = [];
 
-      for (const region in capacidades_por_region) {
-        const capacidades = capacidades_por_region[region];
+      for (const region of regiones) {
+        const capacidades = capacidades_por_region[region.name] || [20];
         for (const capacidad of capacidades) {
-          insertsCapacidad.push(
-            tx.capacidadTurno.upsert({
-              where: {
-                turnoId_region_capacidad: {
+          const existe = await tx.capacidadTurno.findFirst({
+            where: {
+              turnoId: turno.id,
+              regionId: region.id,
+              capacidad,
+            },
+          });
+
+          if (!existe) {
+            insertsCapacidad.push(
+              tx.capacidadTurno.create({
+                data: {
                   turnoId: turno.id,
-                  region,
+                  regionId: region.id,
                   capacidad,
                 },
-              },
-              update: {}, // si ya existe no cambia nada
-              create: {
-                turnoId: turno.id,
-                region,
-                capacidad,
-              },
-            })
-          );
+              })
+            );
+          }
+          ;
         }
       }
 
       await Promise.all(insertsCapacidad);
-
       return turno;
     });
 
@@ -82,27 +92,155 @@ async function crearTurno(req, res) {
   }
 }
 
+const getCommercialPlanes = async (req, res) => {
+  try {
+    // 1) Leer turnoId en lugar de id
+    const { turnoId } = req.params;
+    const { origen, destino, fecha } = req.query;
+
+    // 2) Parámetros obligatorios
+    if (!turnoId || !origen || !destino || !fecha) {
+      return res.status(400).json({
+        error: 'Faltan parámetros: turnoId (ruta), origen, destino o fecha.'
+      });
+    }
+
+    // 3) Validar que el turno exista
+    const turno = await prisma.turno.findUnique({
+      where: { id: turnoId },
+      select: { id: true }
+    });
+    if (!turno) {
+      return res.status(404).json({ error: 'Turno no encontrado.' });
+    }
+
+    // 4) Llamar al servicio de scraping + cache
+    const vuelosRaw = await getFlights(origen, destino, fecha, turnoId);
+
+    // 5) Normalizar precios y adjuntar turnoId
+    const vuelos = vuelosRaw.map(f => ({
+      airline:         f.airline,
+      flightCode:      f.flightCode,
+      origin:          f.origin,
+      destination:     f.destination,
+      departureDate:   new Date(f.departureDate),
+      departureTime:   new Date(f.departureTime),
+      arrivalTime:     new Date(f.arrivalTime),
+      durationMinutes: f.durationMinutes,
+      priceClp:        f.priceClp.toString(),
+      direct:          f.direct,
+      stops:           f.stops,
+      stopsDetail:     f.stopsDetail,
+      seatsAvailable:  f.seatsAvailable,
+
+      // ← clave foránea para asociar al turno
+      turnoId,
+    }));
+
+    // 6) (Opcional) Persistencia con skipDuplicates:
+    // await prisma.commercialPlane.createMany({
+    //   data: vuelos,
+    //   skipDuplicates: true
+    // });
+
+    // 7) Devolver los vuelos
+    return res.json({ vuelos });
+
+  } catch (err) {
+    console.error('Error en GET /turnos/:turnoId/commercialPlanes:', err);
+    return res.status(500).json({
+      error: 'Error interno del servidor al obtener vuelos comerciales para el turno.'
+    });
+  }
+};
+
+const deleteCommercialPlanesByTurno = async (req, res) => {
+  try {
+    const { turnoId } = req.params;
+
+    // Verificar si el turno existe
+    const turno = await prisma.turno.findUnique({
+      where: { id: turnoId },
+      select: { id: true }
+    });
+
+    if (!turno) {
+      return res.status(404).json({ error: 'Turno no encontrado.' });
+    }
+
+    // Eliminar todos los CommercialPlanes asociados al turno
+    await prisma.commercialPlane.deleteMany({
+      where: { turnoId }
+    });
+
+    return res.json({ message: 'Todos los CommercialPlanes han sido eliminados correctamente.' });
+  } catch (err) {
+    console.error('Error al eliminar CommercialPlanes:', err);
+    return res.status(500).json({
+      error: 'Error interno del servidor al eliminar los vuelos comerciales para el turno.'
+    });
+  }
+};
+
+module.exports = {
+  // otras funciones del controlador...
+  deleteCommercialPlanesByTurno
+};
+
 
 // Obtener todos los turnos
 async function obtenerTurnos(req, res) {
   try {
-    const { proyectos } = req.user;
-    const turnos = await prisma.turno.findMany({
-      where: {
-        proyecto: {
-          in: proyectos, // 👈 Filtra sólo los que puede ver este usuario
+    const { proyectos, role } = req.user;
+    
+    // Prepare the where clause based on projects
+    let whereClause = {};
+    
+    // If the user is not a VISUALIZADOR, filter by projects
+    if (role !== "VISUALIZADOR") {
+      // Get all the project IDs from the names in proyectos array
+      const projectsData = await prisma.project.findMany({
+        where: {
+          name: {
+            in: proyectos.map(p => typeof p === 'object' ? p.name : p)
+          }
         },
-      },
+        select: { id: true }
+      });
+      
+      const projectIds = projectsData.map(p => p.id);
+      
+      whereClause = {
+        proyectoId: {
+          in: projectIds
+        }
+      };
+    }
+
+    // Get all turnos with related data
+    const turnos = await prisma.turno.findMany({
+      where: whereClause,
       orderBy: { fecha: 'desc' },
       include: { 
         trabajadoresTurno: true,
         busTurno: true,
         planeTurno: true,
-        creadoPor: true
+        creadoPor: true,
+        proyecto: true,  // Include Project
+        tipoTurno: true  // Include ShiftType
       },
     });
-    res.json(turnos);
+    
+    // Transform the data to match the previous format expected by the frontend
+    const transformedTurnos = turnos.map(turno => ({
+      ...turno,
+      proyecto: turno.proyecto.name,     // Use project name instead of ID
+      tipoTurno: turno.tipoTurno.name    // Use shiftType name instead of ID
+    }));
+    
+    res.json(transformedTurnos);
   } catch (error) {
+    console.error('Error al obtener turnos:', error);
     res.status(500).json({ error: 'Error al obtener turnos' });
   }
 }
@@ -115,6 +253,8 @@ async function obtenerTurno(req, res) {
       where: { id },
       include: {
         creadoPor: true,
+        proyecto: true,
+        tipoTurno: true,
         trabajadoresTurno: {
           include: {
             trabajador: true,
@@ -130,7 +270,12 @@ async function obtenerTurno(req, res) {
       },
     });
     if (!turno) return res.status(404).json({ error: 'Turno no encontrado' });
-    res.json(turno);
+    const transformedTurno = {
+      ...turno,
+      proyecto: turno.proyecto.name,
+      tipoTurno: turno.tipoTurno.name
+    };
+    res.json(transformedTurno);
   } catch (error) {
     res.status(500).json({ error: 'Error al obtener turno' });
   }
@@ -167,6 +312,146 @@ async function obtenerAvionesTurno(req, res) {
     res.status(500).json({ error: 'Error al obtener aviones del turno' });
   }
 }
+
+async function obtenerCapacidadAvionesTurno(req, res) {
+  try {
+    // 1. Agrupar por planeId y sumar la capacidad de los aviones
+    const avionesPorCombinacion = await prisma.planeTurno.groupBy({
+      by: ['planeId'], // Agrupamos por planeId
+      _sum: {
+        capacidad: true, // Sumamos la capacidad de los aviones
+      },
+    });
+
+    // 2. Obtener los detalles de los aviones (ciudad_origen y ciudad_destino)
+    const planeIds = avionesPorCombinacion.map((avion) => avion.planeId);
+    
+    // Obtener los detalles de los aviones por planeId
+    const planes = await prisma.plane.findMany({
+      where: {
+        id: {
+          in: planeIds, // Filtrar por los planeIds que hemos agrupado
+        },
+      },
+      select: {
+        id: true,
+        ciudad_origen: true,
+        ciudad_destino: true,
+      },
+    });
+
+    // 3. Mapear los resultados agrupados con los detalles de los aviones
+    const resultado = avionesPorCombinacion.map((avion) => {
+      const plane = planes.find((p) => p.id === avion.planeId);
+      return {
+        origenDestino: `${plane.ciudad_origen} → ${plane.ciudad_destino}`,
+        capacidadTotal: avion._sum.capacidad,
+      };
+    });
+
+    // 4. Eliminar duplicados usando un objeto como un Set
+    const resultadoUnico = [];
+    const seen = new Set();
+
+    for (const item of resultado) {
+      const key = item.origenDestino;
+      if (!seen.has(key)) {
+        seen.add(key);
+        resultadoUnico.push(item);
+      }
+    }
+
+    // 5. Devolver el resultado único
+    res.json(resultadoUnico);
+  } catch (error) {
+    console.error("Error al obtener capacidad de aviones por combinación:", error);
+    res.status(500).json({ error: 'Error al obtener capacidad de aviones por combinación' });
+  }
+}
+
+async function obtenerCapacidadUsadaPorCombinacion(req, res) {
+  try {
+    const { id } = req.params; // El id del turno
+
+    // Primero obtenemos los aviones agrupados por planeId y sumamos la capacidad para el turno específico
+    const avionesPorCombinacion = await prisma.planeTurno.groupBy({
+      by: ["planeId"], // Agrupar por planeId
+      _sum: {
+        capacidad: true,  // Sumar la capacidad de los aviones
+      },
+      where: {
+        turnoId: id,  // Filtrar por el turno específico
+      }
+    });
+
+    // Obtener los detalles del avión (origen y destino) usando los planeId para el turno específico
+    const planeIds = avionesPorCombinacion.map((avion) => avion.planeId);
+
+    // Obtener los detalles de los aviones por planeId (origen y destino)
+    const avionesDetalles = await prisma.plane.findMany({
+      where: {
+        id: { in: planeIds },  // Filtrar por los planeIds obtenidos
+      },
+      select: {
+        id: true,
+        ciudad_origen: true,
+        ciudad_destino: true,
+      },
+    });
+
+    // Obtener la cantidad de trabajadores con origen y destino similar (convertidos a mayúsculas) para el turno específico
+    const trabajadoresPorCombinacion = await prisma.trabajadorTurno.groupBy({
+      by: ["origen", "destino"],  // Agrupar por origen y destino de los trabajadores
+      _count: {
+        id: true,  // Contar los trabajadores por combinación de origen y destino
+      },
+      where: {
+        turnoId: id,  // Filtrar por el turno específico
+      }
+    });
+
+    // Unir los resultados de la capacidad de los aviones con los detalles de los trabajadores
+    const resultado = avionesPorCombinacion.map((avion) => {
+      const avionDetalle = avionesDetalles.find((plane) => plane.id === avion.planeId);
+      
+      // Convertir origen y destino de los aviones y trabajadores a mayúsculas para compararlos
+      const origenDestino = `${avionDetalle.ciudad_origen.toUpperCase()} → ${avionDetalle.ciudad_destino.toUpperCase()}`;
+
+      // Buscar el conteo de trabajadores con ese origen y destino
+      const trabajadoresCombinacion = trabajadoresPorCombinacion.find((trabajador) => {
+        return trabajador.origen.toUpperCase() === avionDetalle.ciudad_origen.toUpperCase() &&
+               trabajador.destino.toUpperCase() === avionDetalle.ciudad_destino.toUpperCase();
+      });
+
+      return {
+        origenDestino: origenDestino,
+        capacidadTotal: avion._sum.capacidad,
+        trabajadoresTotales: trabajadoresCombinacion ? trabajadoresCombinacion._count.id : 0,  // Usar el conteo de trabajadores o 0 si no existe
+      };
+    });
+
+    // Eliminar duplicados usando un objeto Set
+    const resultadoUnico = [];
+    const seen = new Set();
+
+    for (const item of resultado) {
+      const key = item.origenDestino;
+      if (!seen.has(key)) {
+        seen.add(key);
+        resultadoUnico.push(item);
+      }
+    }
+
+    // Devolver el resultado único
+    res.json(resultadoUnico);
+  } catch (error) {
+    console.error("Error al obtener capacidad de aviones por combinación:", error);
+    res.status(500).json({ error: 'Error al obtener capacidad de aviones por combinación' });
+  }
+}
+
+
+
 
 async function obtenerBusesTurno(req, res) {
   try {
@@ -207,10 +492,24 @@ async function editarTurno(req, res) {
     const diffMs = nuevaFecha.getTime() - fechaOriginal.getTime();
     const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24)); // diferencia en días
 
+    const projectObj = await prisma.project.findUnique({
+      where: { name: proyecto }
+    });
+
+    const shiftTypeObj = await prisma.shiftType.findUnique({
+      where: { name: tipoTurno }
+    });
+
+    if (!projectObj || !shiftTypeObj) {
+      return res.status(400).json({ 
+        error: 'Proyecto o tipo de turno no encontrado'
+      });
+    }
+
     // 1. Actualizar todos los parametros del turno
     await prisma.turno.update({
       where: { id },
-      data: { fecha: nuevaFecha, nombre: nombre, proyecto: proyecto, tipoTurno: tipoTurno },
+      data: { fecha: nuevaFecha, nombre: nombre, proyectoId: projectObj.id, tipoTurnoId: shiftTypeObj.id },
     });
 
     // Si no hay cambio en días, no es necesario actualizar planes
@@ -248,36 +547,130 @@ async function editarTurno(req, res) {
   }
 }
 
-
 async function obtenerCapacidadTurno(req, res) {
   try {
     const { id } = req.params;
     const capacidadTurno = await prisma.capacidadTurno.findMany({
       where: { turnoId: id },
-      // Puedes incluir más detalles si tu modelo lo permite
+      include: {
+        region: true,
+      },
     });
 
-    res.json(capacidadTurno);
+    const capacidadesFormateadas = capacidadTurno.map(c => ({
+      id: c.id,
+      region: c.region.name,
+      capacidad: c.capacidad,
+    }));
+
+    res.json(capacidadesFormateadas);
   } catch (error) {
+    console.error("Error al obtener capacidades del turno:", error);
     res.status(500).json({ error: 'Error al obtener capacidades del turno' });
   }
 }
+
+async function enviarNotificaciones(req, res) {
+  try {
+    const { id } = req.params;
+    const asignaciones = await prisma.trabajadorTurno.findMany({
+      where: { turnoId: id },
+      include: {
+        assignmentBuses: {
+          include: { busTurno: true }
+        },
+        assignmentPlanes: {
+          include: { planeTurno: true }
+        }
+      }
+    });
+
+
+    for (let i = 0; i < asignaciones.length; i++) {
+      var trabajador = await prisma.trabajador.findFirst({
+        where: { id: asignaciones[i].trabajadorId },
+      });
+      if (trabajador.telefono === null || trabajador.telefono === undefined) {
+        continue
+      }
+      var numero = trabajador.telefono;
+      const asignacion = asignaciones[i];
+      if (!asignacion) continue;
+
+      // Tomar el primer bus y el último vuelo asignado (ajusta si necesitas otra lógica)
+      const bus = asignacion.assignmentBuses[0]?.busTurno;
+      const vuelo = asignacion.assignmentPlanes[asignacion.assignmentPlanes.length - 1]?.planeTurno;
+
+      // Si no hay bus o vuelo, puedes saltar o ajustar el mensaje
+      if (!bus || !vuelo) continue;
+
+      // Formatear fechas y horas
+      const fechaSalidaVuelo = new Date(vuelo.horario_salida).toLocaleDateString('es-CL');
+      const horaSalidaVuelo = new Date(vuelo.horario_salida).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+      const horaLlegadaVuelo = new Date(vuelo.horario_llegada).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+
+      const fechaSalidaBus = new Date(bus.horario_salida).toLocaleDateString('es-CL');
+      const horaSalidaBus = new Date(bus.horario_salida).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+      const horaLlegadaBus = new Date(bus.horario_llegada).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+
+      // Mensaje personalizado
+      const mensaje = `¡Hola ${trabajador.nombreCompleto}!👋
+
+      Aquí tienes la información de tus vuelos y buses para tu turno:
+
+      ✈️ Vuelo de ${asignacion.origen} a ${asignacion.destino}:
+      📍 Origen: ${asignacion.origen}
+      📍 Destino: ${asignacion.destino}
+      📅 Fecha de salida: ${fechaSalidaVuelo}
+      ⏰ Hora de salida: ${horaSalidaVuelo}
+      ⏰ Hora de llegada: ${horaLlegadaVuelo}
+
+      🚌 Bus de ${bus.comunas_origen ? JSON.parse(bus.comunas_origen)[0] : ''} a ${bus.comunas_destino ? JSON.parse(bus.comunas_destino)[0] : ''}:
+      📍 Origen: ${bus.comunas_origen ? JSON.parse(bus.comunas_origen)[0] : ''}
+      📍 Destino: ${bus.comunas_destino ? JSON.parse(bus.comunas_destino)[0] : ''}
+      📅 Fecha de salida: ${fechaSalidaBus}
+      ⏰ Hora de salida: ${horaSalidaBus}
+      ⏰ Hora de llegada: ${horaLlegadaBus}
+
+      Espero que esta información sea útil para ti. ¿Hay algo más en lo que pueda ayudarte? ¡Estoy aquí para lo que necesites! 😊🛫🚌`;
+
+      await enviarMensaje(numero, mensaje);
+    }
+
+    res.status(200).json({ message: `Notificaciones enviadas` });
+  } catch (error) {
+    console.error("Error al enviar notificaciones:", error);
+    res.status(500).json({ error: 'Error al enviar notificaciones' });
+  }
+}
+
 
 async function agregarCapacidadTurno(req, res) {
   try {
     const { id } = req.params;
     const { capacidades_por_region } = req.body;
+
     const turno = await prisma.turno.findUnique({
-      where: { id: id },
+      where: { id },
     });
+
     for (const region in capacidades_por_region) {
+      const regionObj = await prisma.region.findUnique({
+        where: { name: region }
+      });
+
+      if (!regionObj) {
+        console.warn(`⚠️ Región ${region} no encontrada, se omite.`);
+        continue;
+      }
+
       const capacidades = capacidades_por_region[region];
 
       for (const capacidad of capacidades) {
         const existe = await prisma.capacidadTurno.findFirst({
           where: {
             turnoId: turno.id,
-            region: region,
+            regionId: regionObj.id,
             capacidad: capacidad,
           },
         });
@@ -286,7 +679,7 @@ async function agregarCapacidadTurno(req, res) {
           await prisma.capacidadTurno.create({
             data: {
               turnoId: turno.id,
-              region: region,
+              regionId: regionObj.id,
               capacidad: capacidad,
             },
           });
@@ -294,13 +687,13 @@ async function agregarCapacidadTurno(req, res) {
       }
     }
 
-
     res.status(204).send();
   } catch (error) {
     console.error("Error al agregar capacidad al turno:", error);
     res.status(500).json({ error: "Error al agregar capacidad al turno" });
   }
 }
+
 async function editarCapacidadTurno(req, res) {
   try {
     const { capacidades} = req.body;
@@ -786,11 +1179,50 @@ async function importarTrabajadoresAlTurno(req, res) {
           data: {
             rut: t.rut,
             nombreCompleto: t.nombre,
+            telefono: getTelefono(t.telefono).trim()
           },
         });
       }
 
-      // 3. Crear el TrabajadorTurno
+      // 3. Crear o actualizar la Región
+      const regionExistente = await prisma.region.findUnique({
+        where: { name: t.region }
+      });
+
+      if (!regionExistente) {
+        await prisma.region.create({
+          data: {
+            name: t.region,
+            comunas_acercamiento_subida: t.subida ? [t.acercamiento] : [],
+            comunas_acercamiento_bajada: !t.subida ? [t.acercamiento] : [],
+            tiempo_promedio_bus: 60, // valor por defecto, ajustable si quieres
+          }
+        });
+      } else {
+        // Verificar y actualizar listas según tipo (subida o bajada)
+        if (t.subida && !regionExistente.comunas_acercamiento_subida.includes(t.acercamiento)) {
+          await prisma.region.update({
+            where: { name: t.region },
+            data: {
+              comunas_acercamiento_subida: {
+                push: t.acercamiento,
+              }
+            }
+          });
+        }
+        if (!t.subida && !regionExistente.comunas_acercamiento_bajada.includes(t.acercamiento)) {
+          await prisma.region.update({
+            where: { name: t.region },
+            data: {
+              comunas_acercamiento_bajada: {
+                push: t.acercamiento,
+              }
+            }
+          });
+        }
+      }
+
+      // 4. Crear el TrabajadorTurno
       await prisma.trabajadorTurno.create({
         data: {
           turnoId: id,
@@ -810,6 +1242,86 @@ async function importarTrabajadoresAlTurno(req, res) {
     res.status(500).json({ error: 'Error al importar trabajadores' });
   }
 }
+
+/**
+ * Normaliza un input de teléfono a +569XXXXXXXX.
+ * - Prioriza el número anotado tras "WSP" o "whatsapp".
+ * - Acepta separadores como "-", "/", espacios, mayúsculas/minúsculas.
+ * @param {string} input 
+ * @returns {string|null} Teléfono en formato "+569XXXXXXXX" o null si no pudo extraer uno válido.
+ */
+function getTelefono(input) {
+  if (!input || typeof input !== 'string') return null;
+  const str = input.trim();
+
+  // Si hay mención de WhatsApp, extraemos de lo que viene después
+  const wspRx = /whatsapp|wsp/i;
+  if (wspRx.test(str)) {
+    const parts = str.split(wspRx);
+    const after = parts[parts.length - 1];
+    const num = extractFirstNumber(after);
+    if (num) return formatChile(num);
+  }
+
+  // Si no, usamos el primer número válido que encontremos
+  const num = extractFirstNumber(str);
+  return num ? formatChile(num) : null;
+}
+
+/**
+ * Extrae la primera secuencia de dígitos (y signo '+') de al menos 8 dígitos (contando espacios intermedios).
+ * @param {string} str 
+ * @returns {string|null} Cadena de dígitos (ej. "981400095" o "+56968065137") o null.
+ */
+function extractFirstNumber(str) {
+  // Buscamos trozos de al menos 8 dígitos (pueden venir con espacios intermedios)
+  const rawMatches = str.match(/(\+?\d[\d ]{7,}\d)/g);
+  if (!rawMatches) return null;
+
+  // Limpiamos espacios interiores
+  const matches = rawMatches.map(s => s.replace(/ /g, ''));
+
+  // 1) Priorizar los que ya vienen con "+56" o "56..."
+  for (const m of matches) {
+    if (m.startsWith('+56') && m.length >= 11) return m;
+  }
+  for (const m of matches) {
+    if (m.startsWith('56') && m.length >= 11) return '+' + m;
+  }
+  // 2) Luego los que tengan 9 dígitos empezando con '9'
+  for (const m of matches) {
+    if (/^9\d{8}$/.test(m)) return m;
+  }
+  // 3) Si aún no hay, devolvemos el primero
+  return matches[0];
+}
+
+/**
+ * Formatea cualquier string de dígitos válidos al estándar chileno "+569XXXXXXXX".
+ * - Quita prefijos "0", "56" o "+56" y se asegura de que quede con 9 dígitos
+ *   empezando en '9'. Si no cumple, devuelve null.
+ * @param {string} num 
+ * @returns {string|null}
+ */
+function formatChile(num) {
+  let n = num.trim();
+
+  // Quitamos '+' y prefijos de país
+  n = n.replace(/^\+?56/, '');
+  // Quitamos ceros a la izquierda
+  n = n.replace(/^0+/, '');
+
+  // Nos quedamos con los últimos 9 dígitos si sobra
+  if (n.length > 9) {
+    n = n.slice(-9);
+  }
+
+  // Validamos que sean exactamente 9 dígitos y empiecen con '9'
+  if (!/^9\d{8}$/.test(n)) return null;
+
+  return '+56' + n;
+}
+
 
 async function agregarTrabajadorATurno(req, res) {
   try {
@@ -848,6 +1360,54 @@ async function agregarTrabajadorATurno(req, res) {
   } catch (error) {
     console.error("Error al agregar trabajador al turno:", error);
     res.status(500).json({ error: "Error interno al agregar trabajador al turno" });
+  }
+}
+
+async function eliminarTrabajadorTurno(req, res) {
+  try {
+    const { id } = req.params;
+
+    // Verifica existencia previa
+    const existente = await prisma.trabajadorTurno.findUnique({ where: { id } });
+    if (!existente) {
+      return res.status(404).json({ error: "TrabajadorTurno no encontrado" });
+    }
+
+    await prisma.trabajadorTurno.delete({ where: { id } });
+
+    res.status(204).send(); // No Content
+  } catch (error) {
+    console.error("Error al eliminar TrabajadorTurno:", error);
+    res.status(500).json({ error: "Error interno al eliminar TrabajadorTurno" });
+  }
+}
+
+async function editarTrabajadorTurno(req, res) {
+  try {
+    const { id } = req.params;
+    const { acercamiento, origen, destino, region, subida } = req.body;
+
+    // Verifica existencia previa
+    const existente = await prisma.trabajadorTurno.findUnique({ where: { id } });
+    if (!existente) {
+      return res.status(404).json({ error: "TrabajadorTurno no encontrado" });
+    }
+
+    const actualizado = await prisma.trabajadorTurno.update({
+      where: { id },
+      data: {
+        acercamiento,
+        origen,
+        destino,
+        region,
+        subida,
+      },
+    });
+
+    res.status(200).json({ message: "TrabajadorTurno actualizado", trabajadorTurno: actualizado });
+  } catch (error) {
+    console.error("Error al editar TrabajadorTurno:", error);
+    res.status(500).json({ error: "Error interno al editar TrabajadorTurno" });
   }
 }
 
@@ -909,14 +1469,26 @@ const asignarAvionesATurno = async (req, res) => {
 
     // Función para combinar fecha del turno y hora tipo "18:30"
     const construirFechaHora = (fechaBase, horaStr) => {
-      const [hh, mm] = horaStr.split(":").map(Number);
-      const minutosTotales = hh * 60 + mm;
-      const sumarDia = minutosTotales < 780; // antes de las 13:00
+      // Convierte la fecha base a UTC
       const fechaBaseAjustada = new Date(fechaBase);
-      if (sumarDia) fechaBaseAjustada.setDate(fechaBaseAjustada.getDate() + 1);
-      fechaBaseAjustada.setHours(hh, mm, 0, 0);
+      const [hh, mm] = horaStr.split(":").map(Number);
+
+      // Convierte los minutos de la hora a una representación en minutos totales
+      const minutosTotales = hh * 60 + mm;
+      
+      // Verifica si la hora es antes de las 13:00, en ese caso, sumamos un día.
+      const sumarDia = minutosTotales < 780;
+
+      // Ajuste la fecha y hora, manteniendo UTC
+      fechaBaseAjustada.setUTCHours(hh, mm, 0, 0);  // Establecer la hora en UTC
+      
+      // Si la hora es antes de las 13:00, sumamos un día (solo para casos de cambio de día en la madrugada).
+      if (sumarDia) {
+        fechaBaseAjustada.setUTCDate(fechaBaseAjustada.getUTCDate() + 1);
+      }
       return fechaBaseAjustada;
     };
+
 
     const inserts = nuevosAviones.map(avion => {
       const plane = mapaPlanes.get(avion.planeId);
@@ -927,7 +1499,7 @@ const asignarAvionesATurno = async (req, res) => {
         data: {
           planeId: avion.planeId,
           turnoId,
-          capacidad: plane.capacidad,
+          capacidad: avion.capacidad ?? plane.capacidad,
           horario_salida: salidaDT,
           horario_llegada: llegadaDT,
         }
@@ -941,6 +1513,161 @@ const asignarAvionesATurno = async (req, res) => {
     res.status(500).json({ error: 'Error interno al asignar aviones al turno' });
   }
 };
+
+const editarPlaneTurno = async (req, res) => {
+  try {
+    const { id: planeTurnoId } = req.params;
+    const { capacidad, horario_salida, horario_llegada } = req.body;
+
+    if (!horario_salida || !horario_llegada) {
+      return res.status(400).json({ error: 'Debe proporcionar ambos horarios (salida y llegada)' });
+    }
+
+    // Obtener planeTurno con su turno asociado
+    const planeTurno = await prisma.planeTurno.findUnique({
+      where: { id: planeTurnoId },
+      include: { turno: { select: { fecha: true } } },
+    });
+
+    if (!planeTurno) {
+      return res.status(404).json({ error: 'PlaneTurno no encontrado' });
+    }
+
+    const fechaTurno = new Date(planeTurno.turno.fecha);
+
+    // Reutilizamos la lógica para construir datetime a partir de fecha + hora
+    const construirFechaHora = (fechaBase, horaStr) => {
+      const [hh, mm] = horaStr.split(":").map(Number);
+      const minutosTotales = hh * 60 + mm;
+      const sumarDia = minutosTotales < 780; // antes de las 13:00
+      const fechaBaseAjustada = new Date(fechaBase);
+      if (sumarDia) fechaBaseAjustada.setDate(fechaBaseAjustada.getDate() + 1);
+      fechaBaseAjustada.setHours(hh + 20, mm, 0, 0);
+      return fechaBaseAjustada;
+    };
+
+    const nuevaSalida = construirFechaHora(fechaTurno, horario_salida);
+    const nuevaLlegada = construirFechaHora(fechaTurno, horario_llegada);
+
+    const actualizado = await prisma.planeTurno.update({
+      where: { id: planeTurnoId },
+      data: {
+        capacidad,
+        horario_salida: nuevaSalida,
+        horario_llegada: nuevaLlegada,
+      }
+    });
+
+    res.status(200).json({ message: 'Avión actualizado exitosamente', actualizado });
+  } catch (error) {
+    console.error('Error al editar avión del turno:', error);
+    res.status(500).json({ error: 'Error interno al editar avión del turno' });
+  }
+};
+
+const obtenerPlaneTurno = async (req, res) => {
+  const { id } = req.params;
+
+  const planeTurno = await prisma.planeTurno.findUnique({
+    where: { id },
+    include: { plane: true },
+  });
+
+  if (!planeTurno) {
+    return res.status(404).json({ error: "PlaneTurno no encontrado" });
+  }
+
+  res.json(planeTurno);
+};
+
+
+const eliminarPlaneTurno = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar existencia
+    const existente = await prisma.planeTurno.findUnique({ where: { id } });
+    if (!existente) {
+      return res.status(404).json({ error: 'PlaneTurno no encontrado' });
+    }
+
+    // Eliminar
+    await prisma.planeTurno.delete({ where: { id } });
+
+    res.status(200).json({ message: 'PlaneTurno eliminado correctamente' });
+  } catch (error) {
+    console.error('Error al eliminar PlaneTurno:', error);
+    res.status(500).json({ error: 'Error interno al eliminar PlaneTurno' });
+  }
+};
+
+const crearPlaneTurno = async (req, res) => {
+  try {
+    const { turnoId } = req.params;
+    const {
+      ciudad_origen,
+      ciudad_destino,
+      capacidad,
+      horario_salida,
+      horario_llegada
+    } = req.body;
+
+    if (!ciudad_origen || !ciudad_destino || !horario_salida || !horario_llegada || !capacidad) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios para crear el avión' });
+    }
+
+    if (ciudad_origen === ciudad_destino) {
+      return res.status(400).json({ error: 'La ciudad de origen y destino no pueden ser iguales' });
+    }
+
+    const turno = await prisma.turno.findUnique({
+      where: { id: turnoId },
+      select: { fecha: true },
+    });
+
+    if (!turno) {
+      return res.status(404).json({ error: 'Turno no encontrado' });
+    }
+
+    const fechaTurno = new Date(turno.fecha);
+
+    const construirFechaHora = (fechaBase, horaStr) => {
+      const [hh, mm] = horaStr.split(":").map(Number);
+      const minutosTotales = hh * 60 + mm;
+      const sumarDia = minutosTotales < 780; // antes de las 13:00
+      const fechaBaseAjustada = new Date(fechaBase);
+      if (sumarDia) fechaBaseAjustada.setDate(fechaBaseAjustada.getDate() + 1);
+      fechaBaseAjustada.setHours(hh + 20, mm, 0, 0);
+      return fechaBaseAjustada;
+    };
+
+    const plane = await prisma.plane.create({
+      data: {
+        ciudad_origen,
+        ciudad_destino,
+        capacidad,
+        horario_salida,
+        horario_llegada,
+      }
+    });
+
+    const planeTurno = await prisma.planeTurno.create({
+      data: {
+        planeId: plane.id,
+        turnoId,
+        capacidad,
+        horario_salida: construirFechaHora(fechaTurno, horario_salida),
+        horario_llegada: construirFechaHora(fechaTurno, horario_llegada),
+      }
+    });
+
+    res.status(201).json({ message: 'Avión y asignación creados correctamente', planeTurno });
+  } catch (error) {
+    console.error('Error al crear PlaneTurno:', error);
+    res.status(500).json({ error: 'Error interno al crear PlaneTurno' });
+  }
+};
+
 
 
 // Ejecutar modelo de optimización 
@@ -1027,7 +1754,48 @@ async function obtenerAsignacionesDeTurno(req, res) {
       }
     });
 
-    res.json({ buses, vuelos });
+    const vuelosComercialesRaw = await prisma.assignmentCommercialPlane.findMany({
+      where: {
+        commercialPlane: {
+          turnoId: id
+        }
+      },
+      include: {
+        commercialPlane: true,
+        trabajadorTurno: {
+          include: {
+            trabajador: true
+          }
+        }
+      }
+    });
+
+    // Convertir BigInt a Number (u opcionalmente a String si son muy grandes)
+    const vuelos_comerciales = vuelosComercialesRaw.map(vc => ({
+      ...vc,
+      commercialPlane: {
+        ...vc.commercialPlane,
+        priceClp: Number(vc.commercialPlane.priceClp)
+      }
+    }));
+
+    const trabajadoresSinAsignacion = await prisma.trabajadorTurno.findMany({
+      where: {
+        turnoId: id,
+        NOT: {
+          OR: [
+            { id: { in: buses.map(b => b.trabajadorTurno.id) } },
+            { id: { in: vuelos.map(v => v.trabajadorTurno.id) } },
+            { id: { in: vuelos_comerciales.map(vc => vc.trabajadorTurno.id) } }
+          ]
+        }
+      },
+      include: {
+        trabajador: true
+      }
+    });
+
+    res.json({ buses, vuelos, vuelos_comerciales, trabajadoresSinAsignacion });
   } catch (error) {
     console.error("Error al obtener asignaciones:", error);
     res.status(500).json({ error: 'Error al obtener asignaciones' });
@@ -1063,6 +1831,14 @@ async function eliminarAsignacionesDelTurno(req, res) {
 
     await prisma.assignmentPlane.deleteMany({
       where: { trabajadorTurnoId: { in: trabajadorTurnoIds } }
+    });
+
+    await prisma.assignmentCommercialPlane.deleteMany({
+      where: { trabajadorTurnoId: { in: trabajadorTurnoIds } }
+    });
+
+    await prisma.busTurno.deleteMany({
+      where: { turnoId }
     });
 
     // 3. Actualizar el turno: modeloEjecutado = false
@@ -1676,10 +2452,9 @@ async function actualizarParametrosModeloTurno(req, res) {
       espera_conexion_subida,
       espera_conexion_bajada,
       tiempo_promedio_espera,
+      costo_vuelos_comerciales,
       max_tiempo_ejecucion,
       tiempo_adicional_parada,
-      min_hora,
-      max_hora,
     } = req.body;
 
     // Verifica existencia del turno
@@ -1704,10 +2479,9 @@ async function actualizarParametrosModeloTurno(req, res) {
         espera_conexion_subida,
         espera_conexion_bajada,
         tiempo_promedio_espera,
+        costo_vuelos_comerciales,
         max_tiempo_ejecucion,
         tiempo_adicional_parada,
-        min_hora,
-        max_hora,
       },
     });
 
@@ -1715,6 +2489,128 @@ async function actualizarParametrosModeloTurno(req, res) {
   } catch (error) {
     console.error('Error al actualizar parámetros del modelo:', error);
     res.status(500).json({ error: 'Error al actualizar los parámetros del turno' });
+  }
+}
+
+//Comercial Planes Assignment
+
+async function obtenerAsignacionTurnoCommercialPlane(req, res) {
+  try {
+    const { turnoId, commercialPlaneId } = req.params;
+
+    // 1) Validar existencia del vuelo comercial
+    const commercialPlane = await prisma.commercialPlane.findUnique({
+      where: { id: Number(commercialPlaneId) },
+      include: { turno: true }
+    });
+    if (!commercialPlane || commercialPlane.turnoId !== turnoId) {
+      return res.status(404).json({ error: 'CommercialPlane no encontrado en este turno' });
+    }
+
+    // 2) Leer asignaciones existentes
+    const asignados = await prisma.assignmentCommercialPlane.findMany({
+      where: { commercialPlaneId: Number(commercialPlaneId) },
+      include: {
+        trabajadorTurno: {
+          include: { trabajador: true }
+        },
+        commercialPlane: true
+      }
+    });
+
+    // 3) Determinar “subida” igual que hacías para PlaneTurno
+    const subida = commercialPlane.origin.toUpperCase().includes("SANTIAGO");
+    const filtroAcercamiento = subida
+      ? { destino: commercialPlane.destination.toUpperCase() }
+      : { origen: commercialPlane.origin.toUpperCase() };
+
+    // 4) Listar trabajadoresTurno disponibles en este turno y que cumplan filtro
+    const trabajadoresDisponibles = await prisma.trabajadorTurno.findMany({
+      where: {
+        turnoId,
+        ...filtroAcercamiento
+      },
+      include: { trabajador: true }
+    });
+
+    // 5) Excluir a los ya asignados
+    const idsAsignados = new Set(
+      asignados.map(a => a.trabajadorTurno.trabajador.id)
+    );
+    const filtrados = trabajadoresDisponibles.filter(
+      t => !idsAsignados.has(t.trabajador.id)
+    );
+
+    return res.status(200).json({
+      subida,
+      trabajadoresDisponibles: filtrados,
+      asignados
+    });
+  } catch (error) {
+    console.error("Error en GET assignments CommercialPlane:", error);
+    return res.status(500).json({ error: 'Error interno al obtener asignaciones' });
+  }
+}
+
+/**
+ * POST /turnos/:turnoId/commercialPlanes/:commercialPlaneId/assignments
+ * Body: { trabajadorTurnoId: string }
+ */
+async function agregarAsignacionTurnoCommercialPlane(req, res) {
+  try {
+    const { turnoId, commercialPlaneId } = req.params;
+    const { trabajadorTurnoId } = req.body;
+
+    // Opcional: validar que el comercialPlane y el trabajadorTurno pertenezcan a ese turno
+    const cp = await prisma.commercialPlane.findUnique({
+      where: { id: Number(commercialPlaneId) },
+    });
+    if (!cp || cp.turnoId !== turnoId) {
+      return res.status(404).json({ error: 'CommercialPlane no existe o no es de este turno' });
+    }
+
+    // Crear la asignación
+    const nueva = await prisma.assignmentCommercialPlane.create({
+      data: {
+        commercialPlaneId: Number(commercialPlaneId),
+        trabajadorTurnoId
+      }
+    });
+
+    return res.status(201).json(nueva);
+  } catch (error) {
+    console.error("Error en POST assignment CommercialPlane:", error);
+    return res.status(500).json({ error: 'Error al crear asignación' });
+  }
+}
+
+/**
+ * DELETE /turnos/:turnoId/commercialPlanes/:commercialPlaneId/assignments/:trabajadorTurnoId
+ */
+async function eliminarAsignacionTurnoCommercialPlane(req, res) {
+  try {
+    const { turnoId, commercialPlaneId, trabajadorTurnoId } = req.params;
+
+    // Opcional: validar que el vuelo comercial pertenezca al turno
+    const cp = await prisma.commercialPlane.findUnique({
+      where: { id: Number(commercialPlaneId) },
+    });
+    if (!cp || cp.turnoId !== turnoId) {
+      return res.status(404).json({ error: 'CommercialPlane no encontrado en este turno' });
+    }
+
+    // Eliminar la asignación específica
+    await prisma.assignmentCommercialPlane.deleteMany({
+      where: {
+        commercialPlaneId: Number(commercialPlaneId),
+        trabajadorTurnoId
+      }
+    });
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error("Error en DELETE assignment CommercialPlane:", error);
+    return res.status(500).json({ error: 'Error al eliminar asignación' });
   }
 }
 
@@ -1753,5 +2649,19 @@ module.exports = {
   obtenerCompatiblesTurnoPlane,
   intercambioAsignacionTurnoBus,
   intercambioAsignacionTurnoPlane,
-  agregarTrabajadorATurno
+  agregarTrabajadorATurno,
+  eliminarTrabajadorTurno,
+  editarTrabajadorTurno,
+  editarPlaneTurno,
+  eliminarPlaneTurno,
+  crearPlaneTurno,
+  obtenerPlaneTurno,
+  obtenerCapacidadAvionesTurno,
+  obtenerCapacidadUsadaPorCombinacion,
+  getCommercialPlanes,
+  deleteCommercialPlanesByTurno,
+  agregarAsignacionTurnoCommercialPlane,
+  eliminarAsignacionTurnoCommercialPlane,
+  obtenerAsignacionTurnoCommercialPlane,
+  enviarNotificaciones
 };

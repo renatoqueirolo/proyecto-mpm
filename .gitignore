@@ -33,6 +33,7 @@ Thumbs.db
 coverage/
 
 venv/
+.venv/
 
 # Python
 __pycache__/
@@ -40,5 +41,5 @@ __pycache__/
 
 # Output scraper    
 src/scripts/scraper/output/
-
+latam_page.html
 

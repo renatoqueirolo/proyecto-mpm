@@ -28,40 +28,65 @@ model User {
 enum RolUsuario {
   ADMIN
   EJECUTIVO
+  VISUALIZADOR
+}
+
+enum EstadoAsignacion {
+  COMPRADO
+  PENDIENTE
+  AGOTADO
 }
 
 model Trabajador {
   id                String             @id @default(cuid())
   rut               String             @unique
   nombreCompleto    String
+  telefono          String?
   trabajadorTurnos  TrabajadorTurno[]
   historialAsignacion HistorialAsignacion[]
 }
 
-enum Project {
-  ESCONDIDA
-  SPENCE
-  EL_TENIENTE
+model Mensaje {
+  id                String             @id @default(cuid())
+  numero               String             
+  mensaje    String
+  esBot     Boolean  //
 }
 
-enum ShiftType {
-  FOURTEEN_FOURTEEN @map("14x14")
-  SEVEN_SEVEN       @map("7x7")
+
+model Project {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  turnos      Turno[]
+  users       User[]
+}
+
+model ShiftType {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  turnos      Turno[]
 }
 
 model Turno {
   id                 String             @id @default(cuid())
   nombre             String
-  proyecto           Project
-  tipoTurno          ShiftType
+  proyectoId         String             
+  proyecto           Project            @relation(fields: [proyectoId], references: [id])
+  tipoTurnoId        String             
+  tipoTurno          ShiftType          @relation(fields: [tipoTurnoId], references: [id])
   fecha              DateTime
   modeloEjecutado    Boolean
   creadoEn           DateTime           @default(now())
   creadoPorId        String
-  creadoPor   User @relation("TurnosDelUsuario", fields: [creadoPorId], references: [id])
+  creadoPor          User               @relation("TurnosDelUsuario", fields: [creadoPorId], references: [id])
   trabajadoresTurno  TrabajadorTurno[]
   busTurno           BusTurno[]
   planeTurno         PlaneTurno[]
+  commercialPlanes   CommercialPlane[]
   parametrosModelo      ParametrosModeloTurno?
   historialAsignacion HistorialAsignacion[]
   CapacidadTurno     CapacidadTurno[]
@@ -82,6 +107,7 @@ model TrabajadorTurno {
 
   assignmentBuses   AssignmentBus[]
   assignmentPlanes  AssignmentPlane[]
+  assignmentCommercialPlanes AssignmentCommercialPlane[]
 }
 
 
@@ -91,6 +117,7 @@ model BusTurno {
   capacidad       Int
   horario_salida  DateTime
   horario_llegada DateTime
+  region String
   comunas_origen String      
   comunas_destino String     
 
@@ -100,15 +127,17 @@ model BusTurno {
 }
 
 model CapacidadTurno {
-  id              String   @id @default(cuid())
-  turnoId         String
-  capacidad       Int
-  region          String  
+  id        String   @id @default(cuid())
+  turnoId   String
+  regionId  String
+  capacidad Int
 
-  turno           Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+  turno     Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+  region    Region   @relation(fields: [regionId], references: [id], onDelete: Cascade)
 
-  @@unique([turnoId, region, capacidad], name: "turnoId_region_capacidad")
+  @@unique([turnoId, regionId, capacidad], name: "turnoId_regionId_capacidad")
 }
+
 model Plane {
   id        String          @id @default(cuid())
   capacidad Int
@@ -116,8 +145,34 @@ model Plane {
   ciudad_destino  String
   horario_salida String
   horario_llegada String
+  generico        Boolean     @default(false)
 
   planeTurno PlaneTurno[]
+}
+
+model CommercialPlane {
+  id               Int       @id @default(autoincrement())
+  airline          String
+  flightCode       String
+  origin           String
+  destination      String
+  departureDate    DateTime 
+  departureTime    DateTime  
+  arrivalTime      DateTime
+  durationMinutes  Int
+  priceClp         BigInt
+  direct           Boolean
+  stops            Int
+  stopsDetail      Json?
+  seatsAvailable   Int
+  createdAt        DateTime  @default(now())
+  turnoId          String
+  turno            Turno      @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+
+  assignmentCommercialPlanes AssignmentCommercialPlane[]
+
+  @@unique([airline, flightCode, departureDate], name: "airline_flightCode_departureDate") 
+  @@index([origin, destination, departureDate])
 }
 
 model PlaneTurno {
@@ -153,16 +208,30 @@ model AssignmentPlane {
   planeTurno       PlaneTurno      @relation(fields: [planeTurnoId], references: [id], onDelete: Cascade)
 }
 
+model AssignmentCommercialPlane {
+  id                  String            @id @default(cuid())
+  trabajadorTurnoId   String
+  commercialPlaneId   Int
+  estado              EstadoAsignacion  @default(PENDIENTE)
+
+  trabajadorTurno     TrabajadorTurno   @relation(fields: [trabajadorTurnoId], references: [id], onDelete: Cascade)
+  commercialPlane     CommercialPlane   @relation(fields: [commercialPlaneId], references: [id], onDelete: Cascade)
+
+  @@index([trabajadorTurnoId])
+  @@index([commercialPlaneId])
+}
+
 model ParametrosModeloTurno {
   id          String   @id @default(cuid())
   turnoId     String   @unique
   espera_conexion_subida   Int    @default(180)
-  espera_conexion_bajada   Int    @default(10)
+  espera_conexion_bajada   Int    @default(20)
+  max_espera_permitida     Int    @default(480)
+  margen_desfase           Int    @default(150)
   tiempo_promedio_espera   Float    @default(0)
+  costo_vuelos_comerciales Float    @default(0)
   max_tiempo_ejecucion     Int      @default(120)
   tiempo_adicional_parada  Int      @default(30)
-  min_hora                 Int      @default(800)
-  max_hora                 Int      @default(2000)
 
   turno       Turno    @relation(fields: [turnoId], references: [id], onDelete: Cascade)
 }
@@ -179,6 +248,17 @@ model HistorialAsignacion {
 
   trabajador    Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
   turno         Turno      @relation(fields: [turnoId], references: [id], onDelete: Cascade)
+}
 
+model Region {
+  id                      String   @id @default(cuid())
+  name                    String   @unique
+  comunas_acercamiento_subida   String[] // List of communes for pickup
+  comunas_acercamiento_bajada   String[] // List of communes for dropoff
+  tiempo_promedio_bus     Float
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  capacidadesTurno            CapacidadTurno[]
 }
 
