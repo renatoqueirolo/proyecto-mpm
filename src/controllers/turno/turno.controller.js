@@ -1475,7 +1475,7 @@ const asignarAvionesATurno = async (req, res) => {
 
       // Convierte los minutos de la hora a una representación en minutos totales
       const minutosTotales = hh * 60 + mm;
-
+      
       // Verifica si la hora es antes de las 13:00, en ese caso, sumamos un día.
       const sumarDia = minutosTotales < 780;
 
@@ -1486,7 +1486,6 @@ const asignarAvionesATurno = async (req, res) => {
       if (sumarDia) {
         fechaBaseAjustada.setUTCDate(fechaBaseAjustada.getUTCDate() + 1);
       }
-
       return fechaBaseAjustada;
     };
 
