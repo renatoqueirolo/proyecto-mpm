@@ -1179,7 +1179,7 @@ async function importarTrabajadoresAlTurno(req, res) {
           data: {
             rut: t.rut,
             nombreCompleto: t.nombre,
-            telefono: getTelefono(t.telefono).trim()
+            telefono: getTelefono(t.telefono)
           },
         });
       }
