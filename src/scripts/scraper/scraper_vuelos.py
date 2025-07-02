@@ -62,18 +62,19 @@ def main():
     try:
         vuelos_latam_raw = obtener_vuelos_latam(origen=origen, destino=destino, fecha=fecha)
     except Exception as e:
-        print(f"⚠️ Error en scraper Latam: {e}")
+        print(f"⚠️ Error en scraper Latam: {e}", file=sys.stderr)
         vuelos_latam_raw = []
 
     try:
         vuelos_sky_raw = obtener_vuelos_sky(origen=origen, destino=destino, fecha=fecha)
     except Exception as e:
-        print(f"⚠️ Error en scraper Sky: {e}")
+        print(f"⚠️ Error en scraper Sky: {e}", file=sys.stderr)
         vuelos_sky_raw = []
 
     # 2. Si ambos scrapers no devolvieron datos, error
     if not vuelos_latam_raw and not vuelos_sky_raw:
-        raise Exception("Error: ambos scrapers Latam y Sky fallaron o no devolvieron datos.")
+        print("Error: ambos scrapers Latam y Sky fallaron o no devolvieron datos.", file=sys.stderr)
+        sys.exit(1)
 
     # 3. Normalizar cada lista
     normalizados: List[Dict] = []
