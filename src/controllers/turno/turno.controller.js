@@ -593,7 +593,7 @@ async function enviarNotificaciones(req, res) {
       if (trabajador.telefono === null || trabajador.telefono === undefined) {
         continue
       }
-      var numero = trabajador.telefono;
+      var numero = "whatsapp:"+trabajador.telefono;
       const asignacion = asignaciones[i];
       if (!asignacion) continue;
 
