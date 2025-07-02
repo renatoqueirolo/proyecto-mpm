@@ -23,25 +23,15 @@ def parse_args():
     return parser.parse_args()
 
 def normalize_raw_flight(v: Dict) -> Dict:
-    """
-    Recibe un dict v con claves en español (tal como las devuelve obtener_vuelos_latam/sky)
-    y lo convierte a un dict con las claves normalizadas que espera el servicio Node.
-    """
+    fecha_str = v.get("fecha_salida")
+    hora_salida = v.get("hora_salida")
+    hora_llegada = v.get("hora_llegada")
 
-    # 1. Combinar fecha_salida + hora_salida para departureTime
-    #    y usar solo "YYYY-MM-DD" para departureDate.
-    #    Asumimos que v["fecha_salida"] = "2025-05-09" y v["hora_salida"] = "07:45"
-    fecha_str = v.get("fecha_salida")                      # "2025-05-09"
-    hora_salida = v.get("hora_salida")                     # "07:45"
-    hora_llegada = v.get("hora_llegada")                   # "10:40"
-
-    departure_date_iso = fecha_str                          # usaremos "YYYY-MM-DD"
-    # Para departureTime y arrivalTime generamos un ISO completo:
+    departure_date_iso = fecha_str
     departure_time_iso = f"{fecha_str}T{hora_salida}:00"
     arrival_time_iso = f"{fecha_str}T{hora_llegada}:00"
 
-    # 2. Cantidad de paradas (stops) y detalle de paradas (stopsDetail)
-    paradas = v.get("paradas", [])  # lista de paradas; cada elemento puede ser, por ejemplo, {"aeropuerto": "...", "duracion_minutos": 45}
+    paradas = v.get("paradas", [])
     stops_count = len(paradas)
 
     return {
@@ -56,7 +46,7 @@ def normalize_raw_flight(v: Dict) -> Dict:
         "priceClp":       int(v.get("precio_total_clp", 0)),
         "direct":         bool(v.get("directo", False)),
         "stops":          stops_count,
-        "stopsDetail":    paradas, 
+        "stopsDetail":    paradas,
         "seatsAvailable": int(v.get("asientos_disponibles", 0))
     }
 
@@ -68,23 +58,37 @@ def main():
     destino = args.destino
     fecha  = args.fecha
 
-    # 1. Llamar a cada scraper: producen listas de dicts con claves en español
-    vuelos_latam_raw = obtener_vuelos_latam(origen=origen, destino=destino, fecha=fecha)
-    vuelos_sky_raw   = obtener_vuelos_sky(origen=origen, destino=destino, fecha=fecha)
+    # 1. Llamar a cada scraper y capturar errores
+    try:
+        vuelos_latam_raw = obtener_vuelos_latam(origen=origen, destino=destino, fecha=fecha)
+    except Exception as e:
+        print(f"⚠️ Error en scraper Latam: {e}", file=sys.stderr)
+        vuelos_latam_raw = []
 
-    # 2. Normalizar cada lista
+    try:
+        vuelos_sky_raw = obtener_vuelos_sky(origen=origen, destino=destino, fecha=fecha)
+    except Exception as e:
+        print(f"⚠️ Error en scraper Sky: {e}", file=sys.stderr)
+        vuelos_sky_raw = []
+
+    # 2. Si ambos scrapers no devolvieron datos, error
+    if not vuelos_latam_raw and not vuelos_sky_raw:
+        print("Error: ambos scrapers Latam y Sky fallaron o no devolvieron datos.", file=sys.stderr)
+        sys.exit(1)
+
+    # 3. Normalizar cada lista
     normalizados: List[Dict] = []
     for v in vuelos_latam_raw:
         normalizados.append(normalize_raw_flight(v))
     for v in vuelos_sky_raw:
         normalizados.append(normalize_raw_flight(v))
 
-    # 3. (Opcional) ordenar por departureTime
+    # 4. (Opcional) ordenar por departureTime
     normalizados.sort(key=lambda x: x["departureTime"])
 
-    # 4. Imprimir por stdout el JSON unificado
+    # 5. Imprimir por stdout el JSON unificado
     print(json.dumps(normalizados, ensure_ascii=False))
-
 
 if __name__ == "__main__":
     main()
+# 
