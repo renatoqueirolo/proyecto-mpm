@@ -48,7 +48,8 @@ const {
   getCommercialPlanes,
   agregarAsignacionTurnoCommercialPlane,
   obtenerAsignacionTurnoCommercialPlane,
-  eliminarAsignacionTurnoCommercialPlane
+  eliminarAsignacionTurnoCommercialPlane,
+  enviarNotificaciones
 } = require('../../controllers/turno/turno.controller');
 
 router.use(userMustBeLogged)
@@ -190,6 +191,7 @@ router.delete('/plane-turnos/:id', eliminarPlaneTurno);
 router.post('/:turnoId/plane-turnos', crearPlaneTurno);
 router.get('/plane-turnos/:id', obtenerPlaneTurno);
 router.get('/:turnoId/commercialPlanes', getCommercialPlanes);
+router.post('/:turnoId/notificaciones', enviarNotificaciones);
 
 
 

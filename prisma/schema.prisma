@@ -41,6 +41,7 @@ model Trabajador {
   id                String             @id @default(cuid())
   rut               String             @unique
   nombreCompleto    String
+  telefono          String?
   trabajadorTurnos  TrabajadorTurno[]
   historialAsignacion HistorialAsignacion[]
 }

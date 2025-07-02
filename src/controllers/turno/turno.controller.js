@@ -1,11 +1,11 @@
 const ExcelJS = require('exceljs');
 const { execFile } = require('child_process');
 const path = require('path');
-const PdfPrinter = require('pdfmake');;
+const PdfPrinter = require('pdfmake');
 const { getFlights } = require('../../services/commercialFlightService');
 const { PrismaClient, ShiftType } = require('@prisma/client');
 const prisma = new PrismaClient();
-
+const {enviarMensaje} = require('../chatbot/whatsapp.controller');
 // Crear turno
 async function crearTurno(req, res) {
   try {
@@ -533,6 +533,80 @@ async function obtenerCapacidadTurno(req, res) {
   } catch (error) {
     console.error("Error al obtener capacidades del turno:", error);
     res.status(500).json({ error: 'Error al obtener capacidades del turno' });
+  }
+}
+
+async function enviarNotificaciones(req, res) {
+  try {
+    const { id } = req.params;
+    const asignaciones = await prisma.trabajadorTurno.findMany({
+      where: { turnoId: id },
+      include: {
+        assignmentBuses: {
+          include: { busTurno: true }
+        },
+        assignmentPlanes: {
+          include: { planeTurno: true }
+        }
+      }
+    });
+
+
+    for (let i = 0; i < asignaciones.length; i++) {
+      var trabajador = await prisma.trabajador.findFirst({
+        where: { id: asignaciones[i].trabajadorId },
+      });
+      if (trabajador.telefono === null || trabajador.telefono === undefined) {
+        continue
+      }
+      var numero = `whatsapp:${trabajador.telefono}`
+      const asignacion = asignaciones[i];
+      if (!asignacion) continue;
+
+      // Tomar el primer bus y el último vuelo asignado (ajusta si necesitas otra lógica)
+      const bus = asignacion.assignmentBuses[0]?.busTurno;
+      const vuelo = asignacion.assignmentPlanes[asignacion.assignmentPlanes.length - 1]?.planeTurno;
+
+      // Si no hay bus o vuelo, puedes saltar o ajustar el mensaje
+      if (!bus || !vuelo) continue;
+
+      // Formatear fechas y horas
+      const fechaSalidaVuelo = new Date(vuelo.horario_salida).toLocaleDateString('es-CL');
+      const horaSalidaVuelo = new Date(vuelo.horario_salida).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+      const horaLlegadaVuelo = new Date(vuelo.horario_llegada).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+
+      const fechaSalidaBus = new Date(bus.horario_salida).toLocaleDateString('es-CL');
+      const horaSalidaBus = new Date(bus.horario_salida).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+      const horaLlegadaBus = new Date(bus.horario_llegada).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+
+      // Mensaje personalizado
+      const mensaje = `¡Hola ${trabajador.nombreCompleto}!👋
+
+      Aquí tienes la información de tus vuelos y buses para tu turno:
+
+      ✈️ Vuelo de ${asignacion.origen} a ${asignacion.destino}:
+      📍 Origen: ${asignacion.origen}
+      📍 Destino: ${asignacion.destino}
+      📅 Fecha de salida: ${fechaSalidaVuelo}
+      ⏰ Hora de salida: ${horaSalidaVuelo}
+      ⏰ Hora de llegada: ${horaLlegadaVuelo}
+
+      🚌 Bus de ${bus.comunas_origen ? JSON.parse(bus.comunas_origen)[0] : ''} a ${bus.comunas_destino ? JSON.parse(bus.comunas_destino)[0] : ''}:
+      📍 Origen: ${bus.comunas_origen ? JSON.parse(bus.comunas_origen)[0] : ''}
+      📍 Destino: ${bus.comunas_destino ? JSON.parse(bus.comunas_destino)[0] : ''}
+      📅 Fecha de salida: ${fechaSalidaBus}
+      ⏰ Hora de salida: ${horaSalidaBus}
+      ⏰ Hora de llegada: ${horaLlegadaBus}
+
+      Espero que esta información sea útil para ti. ¿Hay algo más en lo que pueda ayudarte? ¡Estoy aquí para lo que necesites! 😊🛫🚌`;
+
+      await enviarMensaje(numero, mensaje);
+    }
+
+    res.status(200).json({ message: `Notificaciones enviadas` });
+  } catch (error) {
+    console.error("Error al enviar notificaciones:", error);
+    res.status(500).json({ error: 'Error al enviar notificaciones' });
   }
 }
 
@@ -1071,6 +1145,7 @@ async function importarTrabajadoresAlTurno(req, res) {
           data: {
             rut: t.rut,
             nombreCompleto: t.nombre,
+            telefono: getTelefono(t.telefono)
           },
         });
       }
@@ -1132,6 +1207,85 @@ async function importarTrabajadoresAlTurno(req, res) {
     console.error(error);
     res.status(500).json({ error: 'Error al importar trabajadores' });
   }
+}
+
+/**
+ * Normaliza un input de teléfono a +569XXXXXXXX.
+ * - Prioriza el número anotado tras "WSP" o "whatsapp".
+ * - Acepta separadores como "-", "/", espacios, mayúsculas/minúsculas.
+ * @param {string} input 
+ * @returns {string|null} Teléfono en formato "+569XXXXXXXX" o null si no pudo extraer uno válido.
+ */
+function getTelefono(input) {
+  if (!input || typeof input !== 'string') return null;
+  const str = input.trim();
+
+  // Si hay mención de WhatsApp, extraemos de lo que viene después
+  const wspRx = /whatsapp|wsp/i;
+  if (wspRx.test(str)) {
+    const parts = str.split(wspRx);
+    const after = parts[parts.length - 1];
+    const num = extractFirstNumber(after);
+    if (num) return formatChile(num);
+  }
+
+  // Si no, usamos el primer número válido que encontremos
+  const num = extractFirstNumber(str);
+  return num ? formatChile(num) : null;
+}
+
+/**
+ * Extrae la primera secuencia de dígitos (y signo '+') de al menos 8 dígitos (contando espacios intermedios).
+ * @param {string} str 
+ * @returns {string|null} Cadena de dígitos (ej. "981400095" o "+56968065137") o null.
+ */
+function extractFirstNumber(str) {
+  // Buscamos trozos de al menos 8 dígitos (pueden venir con espacios intermedios)
+  const rawMatches = str.match(/(\+?\d[\d ]{7,}\d)/g);
+  if (!rawMatches) return null;
+
+  // Limpiamos espacios interiores
+  const matches = rawMatches.map(s => s.replace(/ /g, ''));
+
+  // 1) Priorizar los que ya vienen con "+56" o "56..."
+  for (const m of matches) {
+    if (m.startsWith('+56') && m.length >= 11) return m;
+  }
+  for (const m of matches) {
+    if (m.startsWith('56') && m.length >= 11) return '+' + m;
+  }
+  // 2) Luego los que tengan 9 dígitos empezando con '9'
+  for (const m of matches) {
+    if (/^9\d{8}$/.test(m)) return m;
+  }
+  // 3) Si aún no hay, devolvemos el primero
+  return matches[0];
+}
+
+/**
+ * Formatea cualquier string de dígitos válidos al estándar chileno "+569XXXXXXXX".
+ * - Quita prefijos "0", "56" o "+56" y se asegura de que quede con 9 dígitos
+ *   empezando en '9'. Si no cumple, devuelve null.
+ * @param {string} num 
+ * @returns {string|null}
+ */
+function formatChile(num) {
+  let n = num.trim();
+
+  // Quitamos '+' y prefijos de país
+  n = n.replace(/^\+?56/, '');
+  // Quitamos ceros a la izquierda
+  n = n.replace(/^0+/, '');
+
+  // Nos quedamos con los últimos 9 dígitos si sobra
+  if (n.length > 9) {
+    n = n.slice(-9);
+  }
+
+  // Validamos que sean exactamente 9 dígitos y empiecen con '9'
+  if (!/^9\d{8}$/.test(n)) return null;
+
+  return 'whatsapp:+56' + n;
 }
 
 
@@ -2463,5 +2617,6 @@ module.exports = {
   getCommercialPlanes,
   agregarAsignacionTurnoCommercialPlane,
   eliminarAsignacionTurnoCommercialPlane,
-  obtenerAsignacionTurnoCommercialPlane
+  obtenerAsignacionTurnoCommercialPlane,
+  enviarNotificaciones
 };
