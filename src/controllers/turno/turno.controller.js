@@ -154,6 +154,40 @@ const getCommercialPlanes = async (req, res) => {
   }
 };
 
+const deleteCommercialPlanesByTurno = async (req, res) => {
+  try {
+    const { turnoId } = req.params;
+
+    // Verificar si el turno existe
+    const turno = await prisma.turno.findUnique({
+      where: { id: turnoId },
+      select: { id: true }
+    });
+
+    if (!turno) {
+      return res.status(404).json({ error: 'Turno no encontrado.' });
+    }
+
+    // Eliminar todos los CommercialPlanes asociados al turno
+    await prisma.commercialPlane.deleteMany({
+      where: { turnoId }
+    });
+
+    return res.json({ message: 'Todos los CommercialPlanes han sido eliminados correctamente.' });
+  } catch (err) {
+    console.error('Error al eliminar CommercialPlanes:', err);
+    return res.status(500).json({
+      error: 'Error interno del servidor al eliminar los vuelos comerciales para el turno.'
+    });
+  }
+};
+
+module.exports = {
+  // otras funciones del controlador...
+  deleteCommercialPlanesByTurno
+};
+
+
 // Obtener todos los turnos
 async function obtenerTurnos(req, res) {
   try {
@@ -2472,6 +2506,7 @@ module.exports = {
   obtenerCapacidadAvionesTurno,
   obtenerCapacidadUsadaPorCombinacion,
   getCommercialPlanes,
+  deleteCommercialPlanesByTurno,
   agregarAsignacionTurnoCommercialPlane,
   eliminarAsignacionTurnoCommercialPlane,
   obtenerAsignacionTurnoCommercialPlane
