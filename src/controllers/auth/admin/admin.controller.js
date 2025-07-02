@@ -211,6 +211,7 @@ const importarDesdeExcel = async (req, res) => {
     }
   } catch (error) {
     // Si ocurre un error, lo manejamos y enviamos un mensaje adecuado
+    console.error(error);
     res.status(500).json({ error: error.message });
   }
 };

@@ -593,7 +593,7 @@ async function enviarNotificaciones(req, res) {
       if (trabajador.telefono === null || trabajador.telefono === undefined) {
         continue
       }
-      var numero = `whatsapp:${trabajador.telefono}`
+      var numero = trabajador.telefono;
       const asignacion = asignaciones[i];
       if (!asignacion) continue;
 
@@ -1179,7 +1179,7 @@ async function importarTrabajadoresAlTurno(req, res) {
           data: {
             rut: t.rut,
             nombreCompleto: t.nombre,
-            telefono: getTelefono(t.telefono)
+            telefono: getTelefono(t.telefono).trim()
           },
         });
       }
@@ -1319,7 +1319,7 @@ function formatChile(num) {
   // Validamos que sean exactamente 9 dígitos y empiecen con '9'
   if (!/^9\d{8}$/.test(n)) return null;
 
-  return 'whatsapp:+56' + n;
+  return '+56' + n;
 }
 
 
