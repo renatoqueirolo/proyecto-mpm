@@ -52,6 +52,7 @@ async function enviarMensaje(to, body) {
   });
 }
 
+
 async function borrarHistorial(req, res) {
   try {
     // First delete all related assignments
